@@ -1,5 +1,6 @@
 import { Post } from '../models/Post.js';
 import { News } from '../models/News.js';
+import { getSiteSettings, toPublicSiteSettings } from '../models/SiteSettings.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -60,5 +61,13 @@ export const listActiveNews = asyncHandler(async (_req, res) => {
         createdAt: item.createdAt,
       })),
     },
+  });
+});
+
+export const getPublicSiteSettings = asyncHandler(async (_req, res) => {
+  const settings = await getSiteSettings();
+  res.status(200).json({
+    success: true,
+    data: { settings: toPublicSiteSettings(settings) },
   });
 });

@@ -11,6 +11,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import worksheetRoutes from "./routes/worksheetRoutes.js";
 import parentRoutes from "./routes/parentRoutes.js";
+import educatorRoutes from "./routes/educatorRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { uploadsDir } from "./middleware/upload.js";
 
@@ -61,6 +62,7 @@ export function createApp() {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/parent", parentRoutes);
+  app.use("/api/educator", educatorRoutes);
   app.use("/api/visitors", visitorRoutes);
   app.use("/api/contact", contactRoutes);
   app.use("/api/admin", adminRoutes);

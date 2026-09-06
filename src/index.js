@@ -1,10 +1,12 @@
 import { createApp } from './app.js';
 import { connectDB } from './config/db.js';
 import { env } from './config/env.js';
+import { bootstrapClasses } from './utils/classBootstrap.js';
 
 async function start() {
   try {
     await connectDB();
+    await bootstrapClasses();
     const app = createApp();
 
     app.listen(env.port, () => {

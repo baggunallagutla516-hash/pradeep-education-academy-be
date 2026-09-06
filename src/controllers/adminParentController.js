@@ -58,10 +58,11 @@ export const listParents = asyncHandler(async (req, res) => {
 });
 
 export const getParent = asyncHandler(async (req, res) => {
-  const parent = await Parent.findById(req.params.id).populate(
-    'studentIds',
-    'fullName email phone studentClass schoolName rollNumber isActive'
-  );
+  const parent = await Parent.findById(req.params.id).populate({
+    path: 'studentIds',
+    select: 'fullName email phone studentClass schoolName rollNumber isActive',
+    populate: { path: 'studentClass', select: 'name' },
+  });
   if (!parent) {
     throw new ApiError(404, 'Parent not found');
   }
@@ -171,7 +172,7 @@ export const linkParentStudent = asyncHandler(async (req, res) => {
 
   const [parent, student] = await Promise.all([
     Parent.findById(parentId),
-    Student.findById(studentId),
+    Student.findById(studentId).populate('studentClass', 'name'),
   ]);
 
   if (!parent) {
@@ -208,7 +209,7 @@ export const unlinkParentStudent = asyncHandler(async (req, res) => {
 
   const [parent, student] = await Promise.all([
     Parent.findById(parentId),
-    Student.findById(studentId),
+    Student.findById(studentId).populate('studentClass', 'name'),
   ]);
 
   if (!parent) {

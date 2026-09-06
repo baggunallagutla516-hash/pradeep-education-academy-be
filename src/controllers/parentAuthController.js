@@ -105,7 +105,10 @@ export const listChildren = asyncHandler(async (req, res) => {
   const students = await Student.find({
     _id: { $in: parent.studentIds || [] },
     isActive: true,
-  }).sort({ fullName: 1 });
+    deletedAt: null,
+  })
+    .populate('studentClass', 'name')
+    .sort({ fullName: 1 });
 
   res.status(200).json({
     success: true,
@@ -125,8 +128,11 @@ export const getChild = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You can only view students linked to your account');
   }
 
-  const student = await Student.findById(req.params.studentId);
-  if (!student || !student.isActive) {
+  const student = await Student.findById(req.params.studentId).populate(
+    'studentClass',
+    'name'
+  );
+  if (!student || !student.isActive || student.deletedAt) {
     throw new ApiError(404, 'Student not found');
   }
 

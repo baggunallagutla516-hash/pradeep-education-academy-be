@@ -18,8 +18,8 @@ export const getDashboardStats = asyncHandler(async (_req, res) => {
     postCount,
     newsCount,
   ] = await Promise.all([
-    Student.countDocuments(),
-    Student.countDocuments({ isActive: true }),
+    Student.countDocuments({ deletedAt: null }),
+    Student.countDocuments({ isActive: true, deletedAt: null }),
     Parent.countDocuments(),
     Parent.countDocuments({ isActive: true }),
     Visitor.findOne({ key: 'global' }).lean(),

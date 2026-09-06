@@ -9,9 +9,18 @@ import {
   toPublicParentSummary,
   toPublicStudent,
 } from '../utils/authResponse.js';
+import {
+  assertActiveClassId,
+  listActiveClasses,
+  toPublicClass,
+} from '../utils/schoolClass.js';
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+async function loadStudentPublic(studentId) {
+  return Student.findById(studentId).populate('studentClass', 'name isActive');
 }
 
 export const register = asyncHandler(async (req, res) => {
@@ -34,6 +43,8 @@ export const register = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Passwords do not match');
   }
 
+  await assertActiveClassId(studentClass);
+
   const normalizedPhone = normalizePhone(phone);
 
   const existing = await Student.findOne({
@@ -47,7 +58,7 @@ export const register = asyncHandler(async (req, res) => {
     throw new ApiError(409, 'An account with this phone number already exists');
   }
 
-  const student = await Student.create({
+  const created = await Student.create({
     fullName: fullName.trim(),
     email: email.toLowerCase().trim(),
     phone: normalizedPhone,
@@ -57,6 +68,7 @@ export const register = asyncHandler(async (req, res) => {
     password,
   });
 
+  const student = await loadStudentPublic(created._id);
   const token = signToken({ id: student._id, role: student.role });
   sendAuthResponse(res, student, token, 201, 'Registration successful. Welcome!');
 });
@@ -76,6 +88,10 @@ export const login = asyncHandler(async (req, res) => {
     throw new ApiError(401, 'Invalid email or password');
   }
 
+  if (student.deletedAt) {
+    throw new ApiError(401, 'Invalid email or password');
+  }
+
   if (!student.isActive) {
     throw new ApiError(403, 'Your account is inactive. Please contact support');
   }
@@ -83,8 +99,9 @@ export const login = asyncHandler(async (req, res) => {
   student.lastLoginAt = new Date();
   await student.save({ validateBeforeSave: false });
 
+  const populated = await loadStudentPublic(student._id);
   const token = signToken({ id: student._id, role: student.role });
-  sendAuthResponse(res, student, token, 200, 'Login successful');
+  sendAuthResponse(res, populated, token, 200, 'Login successful');
 });
 
 export const logout = asyncHandler(async (_req, res) => {
@@ -118,9 +135,7 @@ export const updateMe = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
   }
 
-  if (!Student.CLASS_OPTIONS.includes(studentClass)) {
-    throw new ApiError(400, 'Please select a valid class');
-  }
+  await assertActiveClassId(studentClass);
 
   const conflict = await Student.findOne({
     _id: { $ne: req.user._id },
@@ -148,20 +163,23 @@ export const updateMe = asyncHandler(async (req, res) => {
 
   await student.save();
 
+  const populated = await loadStudentPublic(student._id);
+
   res.status(200).json({
     success: true,
     message: 'Profile updated successfully',
     data: {
-      student: toPublicStudent(student),
+      student: toPublicStudent(populated),
     },
   });
 });
 
 export const getClassOptions = asyncHandler(async (_req, res) => {
+  const classes = await listActiveClasses();
   res.status(200).json({
     success: true,
     data: {
-      classes: Student.CLASS_OPTIONS,
+      classes: classes.map(toPublicClass),
     },
   });
 });

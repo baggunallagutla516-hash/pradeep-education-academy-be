@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { classRefFields } from './schoolClass.js';
 
 export function getCookieOptions(maxAgeMs) {
   return {
@@ -11,12 +12,14 @@ export function getCookieOptions(maxAgeMs) {
 }
 
 export function toPublicStudent(student) {
+  const classFields = classRefFields(student.studentClass);
   return {
     id: student._id,
     fullName: student.fullName,
     email: student.email,
     phone: student.phone,
-    studentClass: student.studentClass,
+    studentClass: classFields.studentClass,
+    studentClassName: classFields.studentClassName,
     schoolName: student.schoolName,
     rollNumber: student.rollNumber,
     role: student.role,

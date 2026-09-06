@@ -8,7 +8,7 @@ export async function linkParentAndStudent(parent, student) {
   if (!parent?.isActive) {
     throw new ApiError(403, 'Parent account is inactive');
   }
-  if (!student?.isActive) {
+  if (!student?.isActive || student?.deletedAt) {
     throw new ApiError(403, 'Student account is inactive');
   }
 

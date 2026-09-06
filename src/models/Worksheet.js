@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { Student } from './Student.js';
 
 const worksheetSchema = new mongoose.Schema(
   {
@@ -16,12 +15,9 @@ const worksheetSchema = new mongoose.Schema(
       default: '',
     },
     studentClass: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SchoolClass',
       required: [true, 'Class is required'],
-      enum: {
-        values: Student.CLASS_OPTIONS,
-        message: 'Please select a valid class',
-      },
     },
     coverImageUrl: {
       type: String,

@@ -2,17 +2,6 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import validator from 'validator';
 
-const CLASS_OPTIONS = [
-  'Class 6',
-  'Class 7',
-  'Class 8',
-  'Class 9',
-  'Class 10',
-  'Class 11',
-  'Class 12',
-  'Other',
-];
-
 const studentSchema = new mongoose.Schema(
   {
     fullName: {
@@ -43,12 +32,9 @@ const studentSchema = new mongoose.Schema(
       },
     },
     studentClass: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SchoolClass',
       required: [true, 'Class is required'],
-      enum: {
-        values: CLASS_OPTIONS,
-        message: 'Please select a valid class',
-      },
     },
     schoolName: {
       type: String,
@@ -83,6 +69,10 @@ const studentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
     lastLoginAt: {
       type: Date,
       default: null,
@@ -102,6 +92,8 @@ const studentSchema = new mongoose.Schema(
 
 studentSchema.index({ phone: 1 }, { unique: true });
 studentSchema.index({ createdAt: -1 });
+studentSchema.index({ studentClass: 1 });
+studentSchema.index({ deletedAt: 1 });
 
 studentSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) return next();
@@ -112,7 +104,5 @@ studentSchema.pre('save', async function hashPassword(next) {
 studentSchema.methods.comparePassword = function comparePassword(candidate) {
   return bcrypt.compare(candidate, this.password);
 };
-
-studentSchema.statics.CLASS_OPTIONS = CLASS_OPTIONS;
 
 export const Student = mongoose.model('Student', studentSchema);

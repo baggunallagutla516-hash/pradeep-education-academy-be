@@ -17,9 +17,9 @@ export const protect = asyncHandler(async (req, _res, next) => {
     throw new ApiError(401, 'Session expired. Please log in again');
   }
 
-  const student = await Student.findById(decoded.id);
+  const student = await Student.findById(decoded.id).populate('studentClass', 'name isActive');
 
-  if (!student || !student.isActive) {
+  if (!student || !student.isActive || student.deletedAt) {
     throw new ApiError(401, 'Account not found or inactive. Please log in again');
   }
 

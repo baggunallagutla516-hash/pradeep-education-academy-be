@@ -1,7 +1,8 @@
 import { Worksheet } from '../models/Worksheet.js';
-import { Student } from '../models/Student.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { assertActiveClassId } from '../utils/schoolClass.js';
+import { classRefFields } from '../utils/schoolClass.js';
 import {
   buildObjectKey,
   deleteObject,
@@ -10,11 +11,13 @@ import {
 } from '../utils/storage.js';
 
 function toWorksheetJson(doc) {
+  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: doc.studentClass,
+    studentClass: classFields.studentClass,
+    studentClassName: classFields.studentClassName,
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -59,7 +62,9 @@ async function uploadFile(file) {
 }
 
 export const listWorksheets = asyncHandler(async (_req, res) => {
-  const worksheets = await Worksheet.find().sort({ publishedAt: -1, createdAt: -1 });
+  const worksheets = await Worksheet.find()
+    .populate('studentClass', 'name')
+    .sort({ publishedAt: -1, createdAt: -1 });
   res.status(200).json({
     success: true,
     data: { worksheets: worksheets.map(toWorksheetJson) },
@@ -67,7 +72,7 @@ export const listWorksheets = asyncHandler(async (_req, res) => {
 });
 
 export const getWorksheet = asyncHandler(async (req, res) => {
-  const worksheet = await Worksheet.findById(req.params.id);
+  const worksheet = await Worksheet.findById(req.params.id).populate('studentClass', 'name');
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
   res.status(200).json({
     success: true,
@@ -80,9 +85,7 @@ export const createWorksheet = asyncHandler(async (req, res) => {
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
   if (!studentClass?.trim()) throw new ApiError(400, 'Class is required');
-  if (!Student.CLASS_OPTIONS.includes(studentClass)) {
-    throw new ApiError(400, 'Please select a valid class');
-  }
+  await assertActiveClassId(studentClass);
 
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
@@ -116,6 +119,8 @@ export const createWorksheet = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
+  await worksheet.populate('studentClass', 'name');
+
   res.status(201).json({
     success: true,
     message: 'Worksheet created',
@@ -137,9 +142,7 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
     worksheet.description = String(description).trim();
   }
   if (studentClass !== undefined) {
-    if (!Student.CLASS_OPTIONS.includes(studentClass)) {
-      throw new ApiError(400, 'Please select a valid class');
-    }
+    await assertActiveClassId(studentClass);
     worksheet.studentClass = studentClass;
   }
 
@@ -177,6 +180,7 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
   }
 
   await worksheet.save();
+  await worksheet.populate('studentClass', 'name');
 
   res.status(200).json({
     success: true,

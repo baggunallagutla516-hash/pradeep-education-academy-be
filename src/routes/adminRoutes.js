@@ -6,6 +6,8 @@ import {
   getStudent,
   listStudents,
   setStudentActive,
+  softDeleteStudent,
+  updateStudent,
 } from '../controllers/adminStudentController.js';
 import {
   createPost,
@@ -42,8 +44,16 @@ import {
   listContactQueries,
   updateContactQueryStatus,
 } from '../controllers/adminContactController.js';
+import {
+  createClass,
+  deleteClass,
+  getAdminSettings,
+  removeSiteLogo,
+  updateClass,
+  uploadSiteLogo,
+} from '../controllers/adminSettingsController.js';
 import { protectAdmin } from '../middleware/adminAuth.js';
-import { uploadPoster, uploadWorksheetAssets } from '../middleware/upload.js';
+import { uploadLogo, uploadPoster, uploadWorksheetAssets } from '../middleware/upload.js';
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -66,7 +76,9 @@ router.get('/dashboard', protectAdmin, getDashboardStats);
 
 router.get('/students', protectAdmin, listStudents);
 router.get('/students/:id', protectAdmin, getStudent);
+router.patch('/students/:id', protectAdmin, updateStudent);
 router.patch('/students/:id/active', protectAdmin, setStudentActive);
+router.delete('/students/:id', protectAdmin, softDeleteStudent);
 router.post('/students/:id/parents', protectAdmin, addParentToStudent);
 
 router.get('/parents', protectAdmin, listParents);
@@ -97,5 +109,12 @@ router.get('/contact-queries', protectAdmin, listContactQueries);
 router.get('/contact-queries/:id', protectAdmin, getContactQuery);
 router.patch('/contact-queries/:id', protectAdmin, updateContactQueryStatus);
 router.delete('/contact-queries/:id', protectAdmin, deleteContactQuery);
+
+router.get('/settings', protectAdmin, getAdminSettings);
+router.post('/settings/logo', protectAdmin, uploadLogo, uploadSiteLogo);
+router.delete('/settings/logo', protectAdmin, removeSiteLogo);
+router.post('/settings/classes', protectAdmin, createClass);
+router.patch('/settings/classes/:id', protectAdmin, updateClass);
+router.delete('/settings/classes/:id', protectAdmin, deleteClass);
 
 export default router;

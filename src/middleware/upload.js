@@ -45,6 +45,12 @@ export const uploadPoster = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('posterImage');
 
+export const uploadLogo = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('logo');
+
 const memoryStorage = multer.memoryStorage();
 
 const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
