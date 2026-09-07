@@ -1,13 +1,17 @@
-import fs from 'fs';
-import path from 'path';
 import { SchoolClass, toPublicClass } from '../models/SchoolClass.js';
 import { Student } from '../models/Student.js';
 import { Worksheet } from '../models/Worksheet.js';
 import { getSiteSettings, toPublicSiteSettings } from '../models/SiteSettings.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { uploadsDir } from '../middleware/upload.js';
 import { listAllClasses } from '../utils/schoolClass.js';
+import {
+  assertStorageConfigured,
+  buildObjectKey,
+  deleteObject,
+  keyFromPublicUrl,
+  uploadDiskFile,
+} from '../utils/storage.js';
 
 export const getAdminSettings = asyncHandler(async (_req, res) => {
   const settings = await getSiteSettings();
@@ -23,20 +27,31 @@ export const getAdminSettings = asyncHandler(async (_req, res) => {
 });
 
 export const uploadSiteLogo = asyncHandler(async (req, res) => {
-  if (!req.file) {
+  if (!req.file?.path) {
     throw new ApiError(400, 'Logo image is required');
   }
 
-  const settings = await getSiteSettings();
-  const previousFile = settings.logoFileName;
+  assertStorageConfigured();
 
-  settings.logoUrl = `/uploads/${req.file.filename}`;
-  settings.logoFileName = req.file.filename;
+  const settings = await getSiteSettings();
+  const previousKey = settings.logoKey || keyFromPublicUrl(settings.logoUrl);
+
+  const key = buildObjectKey('site/logo', req.file.originalname);
+  const url = await uploadDiskFile({
+    filePath: req.file.path,
+    contentType: req.file.mimetype,
+    key,
+  });
+
+  settings.logoUrl = url;
+  settings.logoKey = key;
+  if (settings.logoFileName !== undefined) {
+    settings.logoFileName = undefined;
+  }
   await settings.save();
 
-  if (previousFile && previousFile !== req.file.filename) {
-    const prevPath = path.join(uploadsDir, previousFile);
-    fs.promises.unlink(prevPath).catch(() => {});
+  if (previousKey && previousKey !== key) {
+    await deleteObject(previousKey);
   }
 
   res.status(200).json({
@@ -48,15 +63,17 @@ export const uploadSiteLogo = asyncHandler(async (req, res) => {
 
 export const removeSiteLogo = asyncHandler(async (_req, res) => {
   const settings = await getSiteSettings();
-  const previousFile = settings.logoFileName;
+  const previousKey = settings.logoKey || keyFromPublicUrl(settings.logoUrl);
 
   settings.logoUrl = '';
-  settings.logoFileName = '';
+  settings.logoKey = '';
+  if (settings.logoFileName !== undefined) {
+    settings.logoFileName = undefined;
+  }
   await settings.save();
 
-  if (previousFile) {
-    const prevPath = path.join(uploadsDir, previousFile);
-    fs.promises.unlink(prevPath).catch(() => {});
+  if (previousKey) {
+    await deleteObject(previousKey);
   }
 
   res.status(200).json({

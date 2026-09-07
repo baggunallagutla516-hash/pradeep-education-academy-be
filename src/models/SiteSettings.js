@@ -15,7 +15,7 @@ const siteSettingsSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
-    logoFileName: {
+    logoKey: {
       type: String,
       trim: true,
       default: '',

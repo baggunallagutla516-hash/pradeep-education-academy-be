@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { env } from '../config/env.js';
 import { ApiError } from './ApiError.js';
 import * as supabaseStorage from './supabaseStorage.js';
@@ -26,6 +27,16 @@ export async function uploadBuffer({ buffer, contentType, key }) {
     return r2Storage.uploadBufferToR2({ buffer, contentType, key });
   }
   return supabaseStorage.uploadBufferToSupabase({ buffer, contentType, key });
+}
+
+/** Read a disk temp file, upload to object storage, then delete the local file. */
+export async function uploadDiskFile({ filePath, contentType, key }) {
+  try {
+    const buffer = await fs.promises.readFile(filePath);
+    return await uploadBuffer({ buffer, contentType, key });
+  } finally {
+    await fs.promises.unlink(filePath).catch(() => {});
+  }
 }
 
 export async function deleteObject(key) {

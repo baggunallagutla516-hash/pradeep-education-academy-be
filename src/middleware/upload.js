@@ -51,8 +51,6 @@ export const uploadLogo = multer({
   limits: { fileSize: 2 * 1024 * 1024 },
 }).single('logo');
 
-const memoryStorage = multer.memoryStorage();
-
 const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const FILE_TYPES = [
   'application/pdf',
@@ -91,7 +89,7 @@ function worksheetFileFilter(_req, file, cb) {
 }
 
 export const uploadWorksheetAssets = multer({
-  storage: memoryStorage,
+  storage,
   fileFilter: worksheetFileFilter,
   limits: { fileSize: 25 * 1024 * 1024 },
 }).fields([
