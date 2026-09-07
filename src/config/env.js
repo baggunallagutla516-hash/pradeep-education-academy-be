@@ -38,7 +38,7 @@ export const env = {
   siteName: process.env.SITE_NAME || "PRADEEP'S EDUCATIONAL ACADEMY",
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   contactToEmail:
-    process.env.CONTACT_TO_EMAIL || 'pradeep.acad.infor@gmail.com',
+    process.env.CONTACT_TO_EMAIL || 'pradeep.acad.info@gmail.com',
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: Number(process.env.SMTP_PORT) || 587,
@@ -48,7 +48,7 @@ export const env = {
     from:
       process.env.SMTP_FROM ||
       process.env.SMTP_USER ||
-      'pradeep.acad.infor@gmail.com',
+      'pradeep.acad.info@gmail.com',
   },
   // supabase (default) | r2 — switch later without changing controllers
   storageProvider: (process.env.STORAGE_PROVIDER || 'supabase').toLowerCase(),
