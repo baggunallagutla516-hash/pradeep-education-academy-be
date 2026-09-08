@@ -69,8 +69,15 @@ export const register = asyncHandler(async (req, res) => {
   });
 
   const student = await loadStudentPublic(created._id);
-  const token = signToken({ id: student._id, role: student.role });
-  sendAuthResponse(res, student, token, 201, 'Registration successful. Welcome!');
+
+  res.status(201).json({
+    success: true,
+    message:
+      'Registration successful. Your account is not active yet. Please contact the admin to activate it.',
+    data: {
+      student: toPublicStudent(student),
+    },
+  });
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -93,7 +100,10 @@ export const login = asyncHandler(async (req, res) => {
   }
 
   if (!student.isActive) {
-    throw new ApiError(403, 'Your account is inactive. Please contact support');
+    throw new ApiError(
+      403,
+      'Your account is not active yet. Please contact the admin to activate it.'
+    );
   }
 
   student.lastLoginAt = new Date();

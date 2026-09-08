@@ -10,6 +10,9 @@ import contactRoutes from "./routes/contactRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import worksheetRoutes from "./routes/worksheetRoutes.js";
+import unitTestRoutes from "./routes/unitTestRoutes.js";
+import dppRoutes from "./routes/dppRoutes.js";
+import slipTestRoutes from "./routes/slipTestRoutes.js";
 import parentRoutes from "./routes/parentRoutes.js";
 import educatorRoutes from "./routes/educatorRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
@@ -68,6 +71,9 @@ export function createApp() {
   app.use("/api/admin", adminRoutes);
   app.use("/api/content", contentRoutes);
   app.use("/api/worksheets", worksheetRoutes);
+  app.use("/api/unit-tests", unitTestRoutes);
+  app.use("/api/dpps", dppRoutes);
+  app.use("/api/slip-tests", slipTestRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -11,6 +11,10 @@ import {
   getEducatorWorksheet,
   listEducatorWorksheets,
 } from '../controllers/educatorWorksheetController.js';
+import {
+  getEducatorUnitTest,
+  listEducatorUnitTests,
+} from '../controllers/educatorUnitTestController.js';
 import { protectEducator } from '../middleware/educatorAuth.js';
 
 const authLimiter = rateLimit({
@@ -34,5 +38,8 @@ router.patch('/me', protectEducator, updateEducatorMe);
 
 router.get('/worksheets', protectEducator, listEducatorWorksheets);
 router.get('/worksheets/:id', protectEducator, getEducatorWorksheet);
+
+router.get('/unit-tests', protectEducator, listEducatorUnitTests);
+router.get('/unit-tests/:id', protectEducator, getEducatorUnitTest);
 
 export default router;

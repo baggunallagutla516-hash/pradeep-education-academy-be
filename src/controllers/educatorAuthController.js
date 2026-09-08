@@ -49,8 +49,14 @@ export const registerEducator = asyncHandler(async (req, res) => {
     password,
   });
 
-  const token = signToken({ id: educator._id, role: educator.role });
-  sendEducatorAuthResponse(res, educator, token, 201, 'Registration successful. Welcome!');
+  res.status(201).json({
+    success: true,
+    message:
+      'Registration successful. Your account is not active yet. Please contact the admin to activate it.',
+    data: {
+      educator: toPublicEducator(educator),
+    },
+  });
 });
 
 export const loginEducator = asyncHandler(async (req, res) => {
@@ -69,7 +75,10 @@ export const loginEducator = asyncHandler(async (req, res) => {
   }
 
   if (!educator.isActive) {
-    throw new ApiError(403, 'Your account is inactive. Please contact support');
+    throw new ApiError(
+      403,
+      'Your account is not active yet. Please contact the admin to activate it.'
+    );
   }
 
   educator.lastLoginAt = new Date();

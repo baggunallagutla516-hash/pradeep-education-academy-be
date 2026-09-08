@@ -50,7 +50,7 @@ const educatorSchema = new mongoose.Schema(
     },
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     lastLoginAt: {
       type: Date,

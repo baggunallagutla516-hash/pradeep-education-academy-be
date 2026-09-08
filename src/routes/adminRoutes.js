@@ -10,6 +10,10 @@ import {
   updateStudent,
 } from '../controllers/adminStudentController.js';
 import {
+  listEducators,
+  setEducatorActive,
+} from '../controllers/adminEducatorController.js';
+import {
   createPost,
   deletePost,
   getPost,
@@ -29,6 +33,29 @@ import {
   listWorksheets,
   updateWorksheet,
 } from '../controllers/adminWorksheetController.js';
+import {
+  createUnitTest,
+  deleteUnitTest,
+  getUnitTest,
+  listUnitTests,
+  updateUnitTest,
+} from '../controllers/adminUnitTestController.js';
+import {
+  createDpp,
+  deleteDpp,
+  getDpp,
+  listDppResults,
+  listDpps,
+  updateDpp,
+} from '../controllers/adminDppController.js';
+import {
+  createSlipTest,
+  deleteSlipTest,
+  getSlipTest,
+  listSlipTestResults,
+  listSlipTests,
+  updateSlipTest,
+} from '../controllers/adminSlipTestController.js';
 import {
   addParentToStudent,
   createParent,
@@ -53,7 +80,12 @@ import {
   uploadSiteLogo,
 } from '../controllers/adminSettingsController.js';
 import { protectAdmin } from '../middleware/adminAuth.js';
-import { uploadLogo, uploadPoster, uploadWorksheetAssets } from '../middleware/upload.js';
+import {
+  uploadLogo,
+  uploadPoster,
+  uploadUnitTestAssets,
+  uploadWorksheetAssets,
+} from '../middleware/upload.js';
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -81,6 +113,9 @@ router.patch('/students/:id/active', protectAdmin, setStudentActive);
 router.delete('/students/:id', protectAdmin, softDeleteStudent);
 router.post('/students/:id/parents', protectAdmin, addParentToStudent);
 
+router.get('/educators', protectAdmin, listEducators);
+router.patch('/educators/:id/active', protectAdmin, setEducatorActive);
+
 router.get('/parents', protectAdmin, listParents);
 router.post('/parents', protectAdmin, createParent);
 router.post('/parents/link', protectAdmin, linkParentStudent);
@@ -104,6 +139,26 @@ router.get('/worksheets/:id', protectAdmin, getWorksheet);
 router.post('/worksheets', protectAdmin, uploadWorksheetAssets, createWorksheet);
 router.patch('/worksheets/:id', protectAdmin, uploadWorksheetAssets, updateWorksheet);
 router.delete('/worksheets/:id', protectAdmin, deleteWorksheet);
+
+router.get('/unit-tests', protectAdmin, listUnitTests);
+router.get('/unit-tests/:id', protectAdmin, getUnitTest);
+router.post('/unit-tests', protectAdmin, uploadUnitTestAssets, createUnitTest);
+router.patch('/unit-tests/:id', protectAdmin, uploadUnitTestAssets, updateUnitTest);
+router.delete('/unit-tests/:id', protectAdmin, deleteUnitTest);
+
+router.get('/dpps', protectAdmin, listDpps);
+router.get('/dpps/:id', protectAdmin, getDpp);
+router.get('/dpps/:id/results', protectAdmin, listDppResults);
+router.post('/dpps', protectAdmin, createDpp);
+router.patch('/dpps/:id', protectAdmin, updateDpp);
+router.delete('/dpps/:id', protectAdmin, deleteDpp);
+
+router.get('/slip-tests', protectAdmin, listSlipTests);
+router.get('/slip-tests/:id', protectAdmin, getSlipTest);
+router.get('/slip-tests/:id/results', protectAdmin, listSlipTestResults);
+router.post('/slip-tests', protectAdmin, createSlipTest);
+router.patch('/slip-tests/:id', protectAdmin, updateSlipTest);
+router.delete('/slip-tests/:id', protectAdmin, deleteSlipTest);
 
 router.get('/contact-queries', protectAdmin, listContactQueries);
 router.get('/contact-queries/:id', protectAdmin, getContactQuery);

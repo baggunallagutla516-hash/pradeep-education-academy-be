@@ -1,6 +1,9 @@
 import { SchoolClass, toPublicClass } from '../models/SchoolClass.js';
 import { Student } from '../models/Student.js';
 import { Worksheet } from '../models/Worksheet.js';
+import { UnitTest } from '../models/UnitTest.js';
+import { Dpp } from '../models/Dpp.js';
+import { SlipTest } from '../models/SlipTest.js';
 import { getSiteSettings, toPublicSiteSettings } from '../models/SiteSettings.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -151,15 +154,18 @@ export const deleteClass = asyncHandler(async (req, res) => {
   const doc = await SchoolClass.findById(req.params.id);
   if (!doc) throw new ApiError(404, 'Class not found');
 
-  const [studentCount, worksheetCount] = await Promise.all([
+  const [studentCount, worksheetCount, unitTestCount, dppCount, slipTestCount] = await Promise.all([
     Student.countDocuments({ studentClass: doc._id, deletedAt: null }),
     Worksheet.countDocuments({ studentClass: doc._id }),
+    UnitTest.countDocuments({ studentClass: doc._id }),
+    Dpp.countDocuments({ studentClass: doc._id }),
+    SlipTest.countDocuments({ studentClass: doc._id }),
   ]);
 
-  if (studentCount > 0 || worksheetCount > 0) {
+  if (studentCount > 0 || worksheetCount > 0 || unitTestCount > 0 || dppCount > 0 || slipTestCount > 0) {
     throw new ApiError(
       409,
-      `Cannot delete this class while it is used by ${studentCount} student(s) and ${worksheetCount} worksheet(s)`
+      `Cannot delete this class while it is used by ${studentCount} student(s), ${worksheetCount} worksheet(s), ${unitTestCount} unit test(s), ${dppCount} DPP(s), and ${slipTestCount} slip test(s)`
     );
   }
 

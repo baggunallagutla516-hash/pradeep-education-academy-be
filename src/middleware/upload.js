@@ -68,7 +68,7 @@ const FILE_TYPES = [
   'image/gif',
 ];
 
-function worksheetFileFilter(_req, file, cb) {
+function resourceFileFilter(_req, file, cb) {
   if (file.fieldname === 'coverImage') {
     if (!COVER_TYPES.includes(file.mimetype)) {
       cb(new ApiError(400, 'Cover image must be JPEG, PNG, WebP, or GIF'));
@@ -90,7 +90,16 @@ function worksheetFileFilter(_req, file, cb) {
 
 export const uploadWorksheetAssets = multer({
   storage,
-  fileFilter: worksheetFileFilter,
+  fileFilter: resourceFileFilter,
+  limits: { fileSize: 25 * 1024 * 1024 },
+}).fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'file', maxCount: 1 },
+]);
+
+export const uploadUnitTestAssets = multer({
+  storage,
+  fileFilter: resourceFileFilter,
   limits: { fileSize: 25 * 1024 * 1024 },
 }).fields([
   { name: 'coverImage', maxCount: 1 },

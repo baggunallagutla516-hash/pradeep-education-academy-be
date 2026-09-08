@@ -67,7 +67,7 @@ const studentSchema = new mongoose.Schema(
     ],
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
     },
     deletedAt: {
       type: Date,

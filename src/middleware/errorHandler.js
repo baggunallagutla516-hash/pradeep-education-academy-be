@@ -30,7 +30,8 @@ export function errorHandler(err, _req, res, _next) {
   if (err.name === 'MulterError') {
     statusCode = 400;
     if (err.code === 'LIMIT_FILE_SIZE') {
-      message = 'File is too large. Max 25MB for worksheets, 5MB for post images.';
+      message =
+        'File is too large. Max 25MB for worksheets and unit tests, 5MB for post images.';
     } else {
       message = err.message;
     }
