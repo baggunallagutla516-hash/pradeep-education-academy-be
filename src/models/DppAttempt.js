@@ -14,6 +14,16 @@ const dppResponseSchema = new mongoose.Schema(
       type: [Number],
       default: [],
     },
+    textAnswer: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: [500, 'Text answer cannot exceed 500 characters'],
+    },
+    correctAnswers: {
+      type: [String],
+      default: [],
+    },
     outcome: {
       type: String,
       enum: ['correct', 'partial', 'wrong', 'unanswered'],

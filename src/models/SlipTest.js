@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
-import { MAX_OPTIONS, MIN_OPTIONS, QUESTION_TYPES } from '../utils/quizGrading.js';
+import {
+  MAX_BLANK_ANSWERS,
+  MAX_OPTIONS,
+  MIN_BLANK_ANSWERS,
+  MIN_OPTIONS,
+  QUESTION_TYPES,
+} from '../utils/quizGrading.js';
 
 const slipTestOptionSchema = new mongoose.Schema(
   {
@@ -24,20 +30,41 @@ const slipTestQuestionSchema = new mongoose.Schema({
     type: String,
     enum: {
       values: QUESTION_TYPES,
-      message: 'Question type must be single or multiple',
+      message: 'Question type must be single, multiple, or blank',
     },
     default: 'single',
   },
   options: {
     type: [slipTestOptionSchema],
+    default: [],
     validate: {
-      validator: (value) => value.length >= MIN_OPTIONS && value.length <= MAX_OPTIONS,
-      message: `A question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options`,
+      validator(value) {
+        if (this.type === 'blank') return Array.isArray(value) && value.length === 0;
+        return value.length >= MIN_OPTIONS && value.length <= MAX_OPTIONS;
+      },
+      message: `A choice question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options`,
     },
   },
   correctOptions: {
     type: [Number],
     default: [],
+  },
+  correctAnswers: {
+    type: [
+      {
+        type: String,
+        trim: true,
+        maxlength: [200, 'Accepted answer cannot exceed 200 characters'],
+      },
+    ],
+    default: [],
+    validate: {
+      validator(value) {
+        if (this.type !== 'blank') return true;
+        return value.length >= MIN_BLANK_ANSWERS && value.length <= MAX_BLANK_ANSWERS;
+      },
+      message: `A blank question needs between ${MIN_BLANK_ANSWERS} and ${MAX_BLANK_ANSWERS} accepted answers`,
+    },
   },
   marks: {
     type: Number,

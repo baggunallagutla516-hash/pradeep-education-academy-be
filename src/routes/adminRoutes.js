@@ -11,7 +11,10 @@ import {
 } from '../controllers/adminStudentController.js';
 import {
   listEducators,
+  getEducator,
+  updateEducator,
   setEducatorActive,
+  softDeleteEducator,
 } from '../controllers/adminEducatorController.js';
 import {
   createPost,
@@ -114,7 +117,10 @@ router.delete('/students/:id', protectAdmin, softDeleteStudent);
 router.post('/students/:id/parents', protectAdmin, addParentToStudent);
 
 router.get('/educators', protectAdmin, listEducators);
+router.get('/educators/:id', protectAdmin, getEducator);
+router.patch('/educators/:id', protectAdmin, updateEducator);
 router.patch('/educators/:id/active', protectAdmin, setEducatorActive);
+router.delete('/educators/:id', protectAdmin, softDeleteEducator);
 
 router.get('/parents', protectAdmin, listParents);
 router.post('/parents', protectAdmin, createParent);

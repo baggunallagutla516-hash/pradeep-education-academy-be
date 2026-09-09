@@ -56,6 +56,10 @@ const educatorSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -71,6 +75,7 @@ const educatorSchema = new mongoose.Schema(
 
 educatorSchema.index({ phone: 1 }, { unique: true });
 educatorSchema.index({ createdAt: -1 });
+educatorSchema.index({ deletedAt: 1 });
 
 educatorSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) return next();

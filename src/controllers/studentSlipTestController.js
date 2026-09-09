@@ -20,10 +20,13 @@ function toAttemptQuestionJson(question, index) {
     text: question.text,
     type: question.type,
     marks: question.marks,
-    options: question.options.map((option, optionIndex) => ({
-      index: optionIndex,
-      text: option.text,
-    })),
+    options:
+      question.type === 'blank'
+        ? []
+        : question.options.map((option, optionIndex) => ({
+            index: optionIndex,
+            text: option.text,
+          })),
   };
 }
 
@@ -279,12 +282,16 @@ function buildResult(slipTest, attempt) {
         type: question?.type || 'single',
         marks: question?.marks || 0,
         options:
-          question?.options.map((option, optionIndex) => ({
-            index: optionIndex,
-            text: option.text,
-          })) || [],
+          question?.type === 'blank'
+            ? []
+            : question?.options.map((option, optionIndex) => ({
+                index: optionIndex,
+                text: option.text,
+              })) || [],
         selectedOptions: response.selectedOptions,
         correctOptions: response.correctOptions,
+        textAnswer: response.textAnswer || '',
+        correctAnswers: response.correctAnswers || [],
         outcome: response.outcome,
         awardedMarks: response.awardedMarks,
         explanation: question?.explanation || '',

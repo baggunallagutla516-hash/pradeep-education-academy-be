@@ -12,6 +12,7 @@ function toQuestionJson(question) {
     type: question.type,
     options: question.options.map((option) => ({ text: option.text })),
     correctOptions: question.correctOptions,
+    correctAnswers: question.correctAnswers || [],
     marks: question.marks,
     explanation: question.explanation,
   };

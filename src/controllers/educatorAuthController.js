@@ -31,6 +31,7 @@ export const registerEducator = asyncHandler(async (req, res) => {
   }
 
   const existing = await Educator.findOne({
+    deletedAt: null,
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
 
@@ -66,9 +67,10 @@ export const loginEducator = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Email and password are required');
   }
 
-  const educator = await Educator.findOne({ email: email.toLowerCase().trim() }).select(
-    '+password'
-  );
+  const educator = await Educator.findOne({
+    email: email.toLowerCase().trim(),
+    deletedAt: null,
+  }).select('+password');
 
   if (!educator || !(await educator.comparePassword(password))) {
     throw new ApiError(401, 'Invalid email or password');
@@ -121,6 +123,7 @@ export const updateEducatorMe = asyncHandler(async (req, res) => {
 
   const conflict = await Educator.findOne({
     _id: { $ne: req.educator._id },
+    deletedAt: null,
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
 

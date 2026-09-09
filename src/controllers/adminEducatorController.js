@@ -3,6 +3,19 @@ import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { toPublicEducator } from '../utils/educatorAuthResponse.js';
 
+function normalizePhone(phone) {
+  return String(phone || '')
+    .replace(/\D/g, '')
+    .slice(-10);
+}
+
+function toAdminEducator(educator) {
+  return {
+    ...toPublicEducator(educator),
+    isActive: educator.isActive,
+  };
+}
+
 export const listEducators = asyncHandler(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
@@ -10,7 +23,7 @@ export const listEducators = asyncHandler(async (req, res) => {
   const q = String(req.query.q || '').trim();
   const status = String(req.query.status || '').trim();
 
-  const filter = {};
+  const filter = { deletedAt: null };
   if (q) {
     filter.$or = [
       { fullName: { $regex: q, $options: 'i' } },
@@ -30,10 +43,7 @@ export const listEducators = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
-      educators: items.map((e) => ({
-        ...toPublicEducator(e),
-        isActive: e.isActive,
-      })),
+      educators: items.map(toAdminEducator),
       pagination: {
         page,
         limit,
@@ -44,13 +54,70 @@ export const listEducators = asyncHandler(async (req, res) => {
   });
 });
 
+export const getEducator = asyncHandler(async (req, res) => {
+  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
+  if (!educator) {
+    throw new ApiError(404, 'Educator not found');
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { educator: toAdminEducator(educator) },
+  });
+});
+
+export const updateEducator = asyncHandler(async (req, res) => {
+  const { fullName, email, phone, schoolName } = req.body;
+
+  if (!fullName || !email || !phone) {
+    throw new ApiError(400, 'Please fill in all required fields');
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedPhone = normalizePhone(phone);
+
+  if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+    throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
+  }
+
+  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
+  if (!educator) {
+    throw new ApiError(404, 'Educator not found');
+  }
+
+  const conflict = await Educator.findOne({
+    _id: { $ne: educator._id },
+    deletedAt: null,
+    $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
+  }).select('_id email phone');
+
+  if (conflict) {
+    if (conflict.email === normalizedEmail) {
+      throw new ApiError(409, 'An educator account with this email already exists');
+    }
+    throw new ApiError(409, 'An educator account with this phone number already exists');
+  }
+
+  educator.fullName = String(fullName).trim();
+  educator.email = normalizedEmail;
+  educator.phone = normalizedPhone;
+  educator.schoolName = schoolName?.trim() || '';
+  await educator.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Educator updated',
+    data: { educator: toAdminEducator(educator) },
+  });
+});
+
 export const setEducatorActive = asyncHandler(async (req, res) => {
   const { isActive } = req.body;
   if (typeof isActive !== 'boolean') {
     throw new ApiError(400, 'isActive boolean is required');
   }
 
-  const educator = await Educator.findById(req.params.id);
+  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
   if (!educator) {
     throw new ApiError(404, 'Educator not found');
   }
@@ -62,10 +129,23 @@ export const setEducatorActive = asyncHandler(async (req, res) => {
     success: true,
     message: isActive ? 'Educator activated' : 'Educator deactivated',
     data: {
-      educator: {
-        ...toPublicEducator(educator),
-        isActive: educator.isActive,
-      },
+      educator: toAdminEducator(educator),
     },
+  });
+});
+
+export const softDeleteEducator = asyncHandler(async (req, res) => {
+  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
+  if (!educator) {
+    throw new ApiError(404, 'Educator not found');
+  }
+
+  educator.deletedAt = new Date();
+  educator.isActive = false;
+  await educator.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: 'Educator deleted',
   });
 });

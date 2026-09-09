@@ -1,7 +1,9 @@
-export const QUESTION_TYPES = ['single', 'multiple'];
+export const QUESTION_TYPES = ['single', 'multiple', 'blank'];
 
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 6;
+export const MIN_BLANK_ANSWERS = 1;
+export const MAX_BLANK_ANSWERS = 6;
 
 export const RESULT_TIERS = [
   {
@@ -57,22 +59,97 @@ function sameSet(a, b) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/** Trim, collapse spaces, and lowercase for fill-in-the-blank matching. */
+export function normalizeTextAnswer(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function cleanAnswerList(values = []) {
+  const seen = new Set();
+  const cleaned = [];
+  values.forEach((value) => {
+    const trimmed = String(value ?? '').trim().replace(/\s+/g, ' ');
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    cleaned.push(trimmed);
+  });
+  return cleaned;
+}
+
+function answersMatch(given, acceptedList) {
+  const normalized = normalizeTextAnswer(given);
+  if (!normalized) return false;
+  return acceptedList.some((accepted) => normalizeTextAnswer(accepted) === normalized);
+}
+
 /**
  * Grades one question. Partial credit follows the standard rule: it is only
  * awarded when every option the student picked is correct but some are missing.
  * Picking any wrong option makes the whole answer wrong.
+ * Fill-in-the-blank answers are matched case-insensitively against accepted texts.
  */
-function gradeQuestion(question, selectedRaw, { negativeMarkPerWrong, allowPartialCredit }) {
-  const selected = uniqueSorted(selectedRaw);
+function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCredit }) {
+  if (question.type === 'blank') {
+    const textAnswer = String(answer?.textAnswer ?? '').trim().replace(/\s+/g, ' ');
+    const correctAnswers = cleanAnswerList(question.correctAnswers);
+    const marks = Number(question.marks || 0);
+
+    if (!textAnswer) {
+      return {
+        selected: [],
+        textAnswer: '',
+        correctAnswers,
+        outcome: 'unanswered',
+        awardedMarks: 0,
+      };
+    }
+
+    if (answersMatch(textAnswer, correctAnswers)) {
+      return {
+        selected: [],
+        textAnswer,
+        correctAnswers,
+        outcome: 'correct',
+        awardedMarks: round2(marks),
+      };
+    }
+
+    return {
+      selected: [],
+      textAnswer,
+      correctAnswers,
+      outcome: 'wrong',
+      awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)),
+    };
+  }
+
+  const selected = uniqueSorted(answer?.selectedOptions);
   const correct = uniqueSorted(question.correctOptions);
   const marks = Number(question.marks || 0);
 
   if (selected.length === 0) {
-    return { selected, outcome: 'unanswered', awardedMarks: 0 };
+    return {
+      selected,
+      textAnswer: '',
+      correctAnswers: [],
+      outcome: 'unanswered',
+      awardedMarks: 0,
+    };
   }
 
   if (sameSet(selected, correct)) {
-    return { selected, outcome: 'correct', awardedMarks: round2(marks) };
+    return {
+      selected,
+      textAnswer: '',
+      correctAnswers: [],
+      outcome: 'correct',
+      awardedMarks: round2(marks),
+    };
   }
 
   const pickedOnlyCorrect = selected.every((index) => correct.includes(index));
@@ -80,29 +157,41 @@ function gradeQuestion(question, selectedRaw, { negativeMarkPerWrong, allowParti
   if (question.type === 'multiple' && allowPartialCredit && pickedOnlyCorrect) {
     return {
       selected,
+      textAnswer: '',
+      correctAnswers: [],
       outcome: 'partial',
       awardedMarks: round2((marks * selected.length) / correct.length),
     };
   }
 
-  return { selected, outcome: 'wrong', awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)) };
+  return {
+    selected,
+    textAnswer: '',
+    correctAnswers: [],
+    outcome: 'wrong',
+    awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)),
+  };
 }
 
 /**
- * Grades a whole attempt. `answers` is a list of { questionId, selectedOptions }.
+ * Grades a whole attempt. `answers` is a list of
+ * { questionId, selectedOptions?, textAnswer? }.
  * Returns the per-question breakdown plus the totals stored on the attempt.
  */
 export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWrong = 0, allowPartialCredit = true }) {
-  const selectionByQuestion = new Map();
+  const answerByQuestion = new Map();
   answers.forEach((answer) => {
     if (!answer || !answer.questionId) return;
-    selectionByQuestion.set(String(answer.questionId), answer.selectedOptions || []);
+    answerByQuestion.set(String(answer.questionId), {
+      selectedOptions: answer.selectedOptions || [],
+      textAnswer: answer.textAnswer || '',
+    });
   });
 
   const counts = { correct: 0, partial: 0, wrong: 0, unanswered: 0 };
 
   const responses = questions.map((question) => {
-    const graded = gradeQuestion(question, selectionByQuestion.get(String(question._id)) || [], {
+    const graded = gradeQuestion(question, answerByQuestion.get(String(question._id)) || {}, {
       negativeMarkPerWrong,
       allowPartialCredit,
     });
@@ -111,7 +200,9 @@ export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWron
     return {
       question: question._id,
       selectedOptions: graded.selected,
-      correctOptions: uniqueSorted(question.correctOptions),
+      correctOptions: question.type === 'blank' ? [] : uniqueSorted(question.correctOptions),
+      textAnswer: graded.textAnswer,
+      correctAnswers: graded.correctAnswers,
       outcome: graded.outcome,
       awardedMarks: graded.awardedMarks,
     };
@@ -153,7 +244,25 @@ export function validateQuestions(questions) {
     }
 
     if (!QUESTION_TYPES.includes(question?.type)) {
-      errors.push(`${label}: type must be single or multiple choice.`);
+      errors.push(`${label}: type must be single choice, multi-select, or fill in the blanks.`);
+    }
+
+    const marks = Number(question?.marks);
+    if (!Number.isFinite(marks) || marks <= 0) {
+      errors.push(`${label}: marks must be greater than zero.`);
+    }
+
+    if (question?.type === 'blank') {
+      const accepted = cleanAnswerList(question?.correctAnswers);
+      if (accepted.length < MIN_BLANK_ANSWERS || accepted.length > MAX_BLANK_ANSWERS) {
+        errors.push(
+          `${label}: needs between ${MIN_BLANK_ANSWERS} and ${MAX_BLANK_ANSWERS} accepted answers.`
+        );
+      }
+      if (accepted.some((answer) => answer.length > 200)) {
+        errors.push(`${label}: each accepted answer can be at most 200 characters.`);
+      }
+      return;
     }
 
     const options = Array.isArray(question?.options) ? question.options : [];
@@ -174,11 +283,6 @@ export function validateQuestions(questions) {
     if (question?.type === 'single' && correct.length > 1) {
       errors.push(`${label}: single choice questions can only have one correct option.`);
     }
-
-    const marks = Number(question?.marks);
-    if (!Number.isFinite(marks) || marks <= 0) {
-      errors.push(`${label}: marks must be greater than zero.`);
-    }
   });
 
   return errors;
@@ -188,12 +292,27 @@ export function validateQuestions(questions) {
  * Normalises an admin payload into the shape stored on the quiz document.
  */
 export function normaliseQuestions(questions = []) {
-  return questions.map((question) => ({
-    text: question.text.trim(),
-    type: question.type,
-    options: question.options.map((option) => ({ text: option.text.trim() })),
-    correctOptions: uniqueSorted(question.correctOptions),
-    marks: Number(question.marks),
-    explanation: (question.explanation || '').trim(),
-  }));
+  return questions.map((question) => {
+    if (question.type === 'blank') {
+      return {
+        text: question.text.trim(),
+        type: 'blank',
+        options: [],
+        correctOptions: [],
+        correctAnswers: cleanAnswerList(question.correctAnswers),
+        marks: Number(question.marks),
+        explanation: (question.explanation || '').trim(),
+      };
+    }
+
+    return {
+      text: question.text.trim(),
+      type: question.type,
+      options: question.options.map((option) => ({ text: option.text.trim() })),
+      correctOptions: uniqueSorted(question.correctOptions),
+      correctAnswers: [],
+      marks: Number(question.marks),
+      explanation: (question.explanation || '').trim(),
+    };
+  });
 }
