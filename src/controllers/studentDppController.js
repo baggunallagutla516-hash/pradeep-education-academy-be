@@ -4,6 +4,12 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { classRefFields } from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
+import {
+  buildOptionOrder,
+  ensureAttemptOptionOrder,
+  optionOrderMap,
+  toShuffledOptions,
+} from '../utils/optionOrder.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -13,20 +19,14 @@ function studentClassId(user) {
 }
 
 /** Question shape sent while the test is being taken — correct answers stripped. */
-function toAttemptQuestionJson(question, index) {
+function toAttemptQuestionJson(question, index, orderByQuestion) {
   return {
     id: question._id,
     number: index + 1,
     text: question.text,
     type: question.type,
     marks: question.marks,
-    options:
-      question.type === 'blank'
-        ? []
-        : question.options.map((option, optionIndex) => ({
-            index: optionIndex,
-            text: option.text,
-          })),
+    options: toShuffledOptions(question, orderByQuestion),
   };
 }
 
@@ -88,6 +88,15 @@ async function loadPublishedDpp(req) {
 
   if (!dpp) throw new ApiError(404, 'DPP not found');
   return dpp;
+}
+
+/** Persist shuffle for legacy in-progress attempts that predate optionOrder. */
+async function withOptionOrder(attempt, questions) {
+  ensureAttemptOptionOrder(attempt, questions);
+  if (attempt.isModified?.('optionOrder')) {
+    await attempt.save();
+  }
+  return attempt;
 }
 
 export const listStudentDpps = asyncHandler(async (req, res) => {
@@ -156,6 +165,7 @@ export const startStudentDpp = asyncHandler(async (req, res) => {
         startedAt,
         expiresAt: new Date(startedAt.getTime() + dpp.durationMinutes * 60 * 1000),
         totalMarks: dpp.totalMarks,
+        optionOrder: buildOptionOrder(dpp.questions),
       });
     } catch (err) {
       // Two tabs hitting start at once — the unique index keeps one attempt.
@@ -163,6 +173,9 @@ export const startStudentDpp = asyncHandler(async (req, res) => {
       attempt = await DppAttempt.findOne({ dpp: dpp._id, student: req.user._id });
     }
   }
+
+  attempt = await withOptionOrder(attempt, dpp.questions);
+  const orderByQuestion = optionOrderMap(attempt);
 
   res.status(200).json({
     success: true,
@@ -175,7 +188,9 @@ export const startStudentDpp = asyncHandler(async (req, res) => {
       },
       dpp: {
         ...toDppSummaryJson(dpp, attempt),
-        questions: dpp.questions.map(toAttemptQuestionJson),
+        questions: dpp.questions.map((question, index) =>
+          toAttemptQuestionJson(question, index, orderByQuestion)
+        ),
       },
     },
   });
@@ -241,6 +256,7 @@ export const getStudentDppResult = asyncHandler(async (req, res) => {
 function buildResult(dpp, attempt) {
   const tier = resultTier(attempt.percentage);
   const questionById = new Map(dpp.questions.map((question) => [String(question._id), question]));
+  const orderByQuestion = optionOrderMap(attempt);
 
   const base = {
     dppId: dpp._id,
@@ -275,13 +291,7 @@ function buildResult(dpp, attempt) {
         text: question?.text || '',
         type: question?.type || 'single',
         marks: question?.marks || 0,
-        options:
-          question?.type === 'blank'
-            ? []
-            : question?.options.map((option, optionIndex) => ({
-                index: optionIndex,
-                text: option.text,
-              })) || [],
+        options: toShuffledOptions(question, orderByQuestion),
         selectedOptions: response.selectedOptions,
         correctOptions: response.correctOptions,
         textAnswer: response.textAnswer || '',

@@ -4,6 +4,12 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { classRefFields } from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
+import {
+  buildOptionOrder,
+  ensureAttemptOptionOrder,
+  optionOrderMap,
+  toShuffledOptions,
+} from '../utils/optionOrder.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -13,20 +19,14 @@ function studentClassId(user) {
 }
 
 /** Question shape sent while the test is being taken — correct answers stripped. */
-function toAttemptQuestionJson(question, index) {
+function toAttemptQuestionJson(question, index, orderByQuestion) {
   return {
     id: question._id,
     number: index + 1,
     text: question.text,
     type: question.type,
     marks: question.marks,
-    options:
-      question.type === 'blank'
-        ? []
-        : question.options.map((option, optionIndex) => ({
-            index: optionIndex,
-            text: option.text,
-          })),
+    options: toShuffledOptions(question, orderByQuestion),
   };
 }
 
@@ -89,6 +89,15 @@ async function loadPublishedSlipTest(req) {
 
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
   return slipTest;
+}
+
+/** Persist shuffle for legacy in-progress attempts that predate optionOrder. */
+async function withOptionOrder(attempt, questions) {
+  ensureAttemptOptionOrder(attempt, questions);
+  if (attempt.isModified?.('optionOrder')) {
+    await attempt.save();
+  }
+  return attempt;
 }
 
 export const listStudentSlipTests = asyncHandler(async (req, res) => {
@@ -157,6 +166,7 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
         startedAt,
         expiresAt: new Date(startedAt.getTime() + slipTest.durationMinutes * 60 * 1000),
         totalMarks: slipTest.totalMarks,
+        optionOrder: buildOptionOrder(slipTest.questions),
       });
     } catch (err) {
       // Two tabs hitting start at once — the unique index keeps one attempt.
@@ -164,6 +174,9 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
       attempt = await SlipTestAttempt.findOne({ slipTest: slipTest._id, student: req.user._id });
     }
   }
+
+  attempt = await withOptionOrder(attempt, slipTest.questions);
+  const orderByQuestion = optionOrderMap(attempt);
 
   res.status(200).json({
     success: true,
@@ -176,7 +189,9 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
       },
       slipTest: {
         ...toSlipTestSummaryJson(slipTest, attempt),
-        questions: slipTest.questions.map(toAttemptQuestionJson),
+        questions: slipTest.questions.map((question, index) =>
+          toAttemptQuestionJson(question, index, orderByQuestion)
+        ),
       },
     },
   });
@@ -246,6 +261,7 @@ function buildResult(slipTest, attempt) {
   const questionById = new Map(
     slipTest.questions.map((question) => [String(question._id), question])
   );
+  const orderByQuestion = optionOrderMap(attempt);
 
   const base = {
     slipTestId: slipTest._id,
@@ -281,13 +297,7 @@ function buildResult(slipTest, attempt) {
         text: question?.text || '',
         type: question?.type || 'single',
         marks: question?.marks || 0,
-        options:
-          question?.type === 'blank'
-            ? []
-            : question?.options.map((option, optionIndex) => ({
-                index: optionIndex,
-                text: option.text,
-              })) || [],
+        options: toShuffledOptions(question, orderByQuestion),
         selectedOptions: response.selectedOptions,
         correctOptions: response.correctOptions,
         textAnswer: response.textAnswer || '',

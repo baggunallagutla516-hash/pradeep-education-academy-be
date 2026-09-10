@@ -44,6 +44,22 @@ import {
   updateUnitTest,
 } from '../controllers/adminUnitTestController.js';
 import {
+  createCet,
+  deleteCet,
+  getCet,
+  listCets,
+  updateCet,
+} from '../controllers/adminCetController.js';
+import {
+  createAssessment,
+  deleteAssessment,
+  getAssessment,
+  listAssessmentResults,
+  listAssessments,
+  releaseAssessmentResults,
+  updateAssessment,
+} from '../controllers/adminAssessmentController.js';
+import {
   createDpp,
   deleteDpp,
   getDpp,
@@ -86,6 +102,7 @@ import { protectAdmin } from '../middleware/adminAuth.js';
 import {
   uploadLogo,
   uploadPoster,
+  uploadCetAssets,
   uploadUnitTestAssets,
   uploadWorksheetAssets,
 } from '../middleware/upload.js';
@@ -151,6 +168,20 @@ router.get('/unit-tests/:id', protectAdmin, getUnitTest);
 router.post('/unit-tests', protectAdmin, uploadUnitTestAssets, createUnitTest);
 router.patch('/unit-tests/:id', protectAdmin, uploadUnitTestAssets, updateUnitTest);
 router.delete('/unit-tests/:id', protectAdmin, deleteUnitTest);
+
+router.get('/cets', protectAdmin, listCets);
+router.get('/cets/:id', protectAdmin, getCet);
+router.post('/cets', protectAdmin, uploadCetAssets, createCet);
+router.patch('/cets/:id', protectAdmin, uploadCetAssets, updateCet);
+router.delete('/cets/:id', protectAdmin, deleteCet);
+
+router.get('/assessments', protectAdmin, listAssessments);
+router.get('/assessments/:id', protectAdmin, getAssessment);
+router.get('/assessments/:id/results', protectAdmin, listAssessmentResults);
+router.post('/assessments/:id/release-results', protectAdmin, releaseAssessmentResults);
+router.post('/assessments', protectAdmin, createAssessment);
+router.patch('/assessments/:id', protectAdmin, updateAssessment);
+router.delete('/assessments/:id', protectAdmin, deleteAssessment);
 
 router.get('/dpps', protectAdmin, listDpps);
 router.get('/dpps/:id', protectAdmin, getDpp);

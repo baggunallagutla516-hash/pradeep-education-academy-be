@@ -81,6 +81,76 @@ export async function sendContactNotification({ name, email, phone, subject, mes
   return { sent: true };
 }
 
+/**
+ * Notifies a student that assessment results are available on the site.
+ * Does not include scores — students must log in to view results.
+ */
+export async function sendAssessmentResultsReleasedEmail({
+  to,
+  studentName,
+  assessmentTitle,
+  resultUrl,
+}) {
+  const transport = getTransporter();
+
+  if (!transport) {
+    console.warn(
+      '[mailer] SMTP is not configured. Results released but email was not sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.'
+    );
+    return { sent: false, skipped: true };
+  }
+
+  const safeName = studentName || 'Student';
+  const safeTitle = assessmentTitle || 'Assessment';
+  const text = [
+    `Hello ${safeName},`,
+    '',
+    `Results for "${safeTitle}" have been released.`,
+    '',
+    'Please log in to the student portal to view your result on the website.',
+    'Scores are not shared by email.',
+    '',
+    resultUrl ? `Open your result: ${resultUrl}` : '',
+    '',
+    `— ${env.siteName}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
+      <p style="margin: 0 0 12px;">Hello ${escapeHtml(safeName)},</p>
+      <p style="margin: 0 0 12px;">
+        Results for <strong>${escapeHtml(safeTitle)}</strong> have been released.
+      </p>
+      <p style="margin: 0 0 16px; color: #555;">
+        Please log in to the student portal to view your result on the website.
+        Scores are not shared by email.
+      </p>
+      ${
+        resultUrl
+          ? `<p style="margin: 0 0 16px;">
+              <a href="${escapeHtml(resultUrl)}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+                View result on site
+              </a>
+            </p>`
+          : ''
+      }
+      <p style="margin: 0; color: #777; font-size: 13px;">— ${escapeHtml(env.siteName)}</p>
+    </div>
+  `;
+
+  await transport.sendMail({
+    from: `"${env.siteName}" <${env.smtp.from}>`,
+    to,
+    subject: `Results released: ${safeTitle}`,
+    text,
+    html,
+  });
+
+  return { sent: true };
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')

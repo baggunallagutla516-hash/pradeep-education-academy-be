@@ -1,0 +1,74 @@
+import { ChapterEndTest } from '../models/ChapterEndTest.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { ApiError } from '../utils/ApiError.js';
+import { classRefFields } from '../utils/schoolClass.js';
+
+const PUBLIC_FIELDS =
+  'title description studentClass chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
+
+function toStudentCetJson(doc) {
+  const classFields = classRefFields(doc.studentClass);
+  return {
+    id: doc._id,
+    title: doc.title,
+    description: doc.description,
+    studentClass: classFields.studentClass,
+    studentClassName: classFields.studentClassName,
+    chapterNumber: doc.chapterNumber,
+    chapterName: doc.chapterName,
+    coverImageUrl: doc.coverImageUrl,
+    fileUrl: doc.fileUrl,
+    fileName: doc.fileName,
+    fileMimeType: doc.fileMimeType,
+    fileSize: doc.fileSize,
+    publishedAt: doc.publishedAt,
+    createdAt: doc.createdAt,
+  };
+}
+
+function studentClassId(user) {
+  const value = user.studentClass;
+  if (!value) return null;
+  if (typeof value === 'object' && value._id) return value._id;
+  return value;
+}
+
+export const listStudentCets = asyncHandler(async (req, res) => {
+  const classId = studentClassId(req.user);
+
+  const cets = await ChapterEndTest.find({
+    isPublished: true,
+    studentClass: classId,
+  })
+    .populate('studentClass', 'name')
+    .sort({ chapterNumber: 1, createdAt: -1 })
+    .select(PUBLIC_FIELDS);
+
+  const classFields = classRefFields(req.user.studentClass);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      studentClass: classFields.studentClass,
+      studentClassName: classFields.studentClassName,
+      cets: cets.map(toStudentCetJson),
+    },
+  });
+});
+
+export const getStudentCet = asyncHandler(async (req, res) => {
+  const cet = await ChapterEndTest.findOne({
+    _id: req.params.id,
+    isPublished: true,
+    studentClass: studentClassId(req.user),
+  })
+    .populate('studentClass', 'name')
+    .select(PUBLIC_FIELDS);
+
+  if (!cet) throw new ApiError(404, 'C.E.T. not found');
+
+  res.status(200).json({
+    success: true,
+    data: { cet: toStudentCetJson(cet) },
+  });
+});

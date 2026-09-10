@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
   getChild,
+  getChildResults,
   getParentMe,
   listChildren,
   loginParent,
@@ -29,6 +30,7 @@ router.get('/me', protectParent, getParentMe);
 router.patch('/me', protectParent, updateParentMe);
 
 router.get('/children', protectParent, listChildren);
+router.get('/children/:studentId/results', protectParent, getChildResults);
 router.get('/children/:studentId', protectParent, getChild);
 
 export default router;

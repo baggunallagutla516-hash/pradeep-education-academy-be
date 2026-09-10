@@ -2,6 +2,8 @@ import { SchoolClass, toPublicClass } from '../models/SchoolClass.js';
 import { Student } from '../models/Student.js';
 import { Worksheet } from '../models/Worksheet.js';
 import { UnitTest } from '../models/UnitTest.js';
+import { ChapterEndTest } from '../models/ChapterEndTest.js';
+import { Assessment } from '../models/Assessment.js';
 import { Dpp } from '../models/Dpp.js';
 import { SlipTest } from '../models/SlipTest.js';
 import { getSiteSettings, toPublicSiteSettings } from '../models/SiteSettings.js';
@@ -154,18 +156,36 @@ export const deleteClass = asyncHandler(async (req, res) => {
   const doc = await SchoolClass.findById(req.params.id);
   if (!doc) throw new ApiError(404, 'Class not found');
 
-  const [studentCount, worksheetCount, unitTestCount, dppCount, slipTestCount] = await Promise.all([
+  const [
+    studentCount,
+    worksheetCount,
+    unitTestCount,
+    cetCount,
+    assessmentCount,
+    dppCount,
+    slipTestCount,
+  ] = await Promise.all([
     Student.countDocuments({ studentClass: doc._id, deletedAt: null }),
     Worksheet.countDocuments({ studentClass: doc._id }),
     UnitTest.countDocuments({ studentClass: doc._id }),
+    ChapterEndTest.countDocuments({ studentClass: doc._id }),
+    Assessment.countDocuments({ studentClass: doc._id }),
     Dpp.countDocuments({ studentClass: doc._id }),
     SlipTest.countDocuments({ studentClass: doc._id }),
   ]);
 
-  if (studentCount > 0 || worksheetCount > 0 || unitTestCount > 0 || dppCount > 0 || slipTestCount > 0) {
+  if (
+    studentCount > 0 ||
+    worksheetCount > 0 ||
+    unitTestCount > 0 ||
+    cetCount > 0 ||
+    assessmentCount > 0 ||
+    dppCount > 0 ||
+    slipTestCount > 0
+  ) {
     throw new ApiError(
       409,
-      `Cannot delete this class while it is used by ${studentCount} student(s), ${worksheetCount} worksheet(s), ${unitTestCount} unit test(s), ${dppCount} DPP(s), and ${slipTestCount} slip test(s)`
+      `Cannot delete this class while it is used by ${studentCount} student(s), ${worksheetCount} worksheet(s), ${unitTestCount} unit test(s), ${cetCount} C.E.T.(s), ${assessmentCount} assessment(s), ${dppCount} DPP(s), and ${slipTestCount} slip test(s)`
     );
   }
 

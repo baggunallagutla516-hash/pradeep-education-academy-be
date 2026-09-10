@@ -82,6 +82,25 @@ const dppAttemptSchema = new mongoose.Schema(
       type: [dppResponseSchema],
       default: [],
     },
+    /**
+     * Per-question display order of option indexes for this student.
+     * Master DPP options stay fixed; grading always uses original indexes.
+     */
+    optionOrder: {
+      type: [
+        {
+          question: {
+            type: mongoose.Schema.Types.ObjectId,
+            required: true,
+          },
+          order: {
+            type: [Number],
+            default: [],
+          },
+        },
+      ],
+      default: [],
+    },
     totalMarks: { type: Number, default: 0 },
     scoredMarks: { type: Number, default: 0 },
     percentage: { type: Number, default: 0 },
