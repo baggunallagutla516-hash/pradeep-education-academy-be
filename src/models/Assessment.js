@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
-import { MAX_OPTIONS, MIN_OPTIONS } from '../utils/quizGrading.js';
+import { MAX_OPTIONS, MIN_OPTIONS, MIN_MATRIX_ROWS, MAX_MATRIX_ROWS } from '../utils/quizGrading.js';
 
-export const ASSESSMENT_QUESTION_TYPES = ['single', 'multiple'];
+export const ASSESSMENT_QUESTION_TYPES = ['single', 'multiple', 'matrix'];
 export const MAX_FULLSCREEN_EXITS = 3;
 
 const assessmentOptionSchema = new mongoose.Schema(
@@ -11,6 +11,18 @@ const assessmentOptionSchema = new mongoose.Schema(
       required: [true, 'Option text is required'],
       trim: true,
       maxlength: [500, 'Option text cannot exceed 500 characters'],
+    },
+  },
+  { _id: false }
+);
+
+const assessmentRowSchema = new mongoose.Schema(
+  {
+    text: {
+      type: String,
+      required: [true, 'Row text is required'],
+      trim: true,
+      maxlength: [500, 'Row text cannot exceed 500 characters'],
     },
   },
   { _id: false }
@@ -27,7 +39,7 @@ const assessmentQuestionSchema = new mongoose.Schema({
     type: String,
     enum: {
       values: ASSESSMENT_QUESTION_TYPES,
-      message: 'Question type must be single or multiple',
+      message: 'Question type must be single, multiple, or matrix',
     },
     default: 'single',
   },
@@ -41,7 +53,22 @@ const assessmentQuestionSchema = new mongoose.Schema({
       message: `A choice question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options`,
     },
   },
+  rows: {
+    type: [assessmentRowSchema],
+    default: [],
+    validate: {
+      validator(value) {
+        if (this.type !== 'matrix') return true;
+        return value.length >= MIN_MATRIX_ROWS && value.length <= MAX_MATRIX_ROWS;
+      },
+      message: `A matrix question needs between ${MIN_MATRIX_ROWS} and ${MAX_MATRIX_ROWS} rows`,
+    },
+  },
   correctOptions: {
+    type: [Number],
+    default: [],
+  },
+  correctMatrix: {
     type: [Number],
     default: [],
   },

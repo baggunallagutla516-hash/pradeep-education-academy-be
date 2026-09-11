@@ -14,7 +14,9 @@ function toQuestionJson(question) {
     text: question.text,
     type: question.type,
     options: question.options.map((option) => ({ text: option.text })),
+    rows: (question.rows || []).map((row) => ({ text: row.text })),
     correctOptions: question.correctOptions,
+    correctMatrix: question.correctMatrix || [],
     section: question.section || 'Section A',
     marks: question.marks,
     explanation: question.explanation,
@@ -102,7 +104,7 @@ function assertAssessmentQuestions(questions) {
   const errors = validateQuestions(questions);
   (questions || []).forEach((question, index) => {
     if (!ASSESSMENT_QUESTION_TYPES.includes(question?.type)) {
-      errors.push(`Question ${index + 1}: type must be single or multiple.`);
+      errors.push(`Question ${index + 1}: type must be single, multiple, or matrix.`);
     }
   });
   if (errors.length > 0) {

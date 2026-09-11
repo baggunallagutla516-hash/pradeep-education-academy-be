@@ -4,6 +4,8 @@ import {
   MAX_OPTIONS,
   MIN_BLANK_ANSWERS,
   MIN_OPTIONS,
+  MIN_MATRIX_ROWS,
+  MAX_MATRIX_ROWS,
   QUESTION_TYPES,
 } from '../utils/quizGrading.js';
 
@@ -14,6 +16,18 @@ const slipTestOptionSchema = new mongoose.Schema(
       required: [true, 'Option text is required'],
       trim: true,
       maxlength: [500, 'Option text cannot exceed 500 characters'],
+    },
+  },
+  { _id: false }
+);
+
+const slipTestRowSchema = new mongoose.Schema(
+  {
+    text: {
+      type: String,
+      required: [true, 'Row text is required'],
+      trim: true,
+      maxlength: [500, 'Row text cannot exceed 500 characters'],
     },
   },
   { _id: false }
@@ -30,7 +44,7 @@ const slipTestQuestionSchema = new mongoose.Schema({
     type: String,
     enum: {
       values: QUESTION_TYPES,
-      message: 'Question type must be single, multiple, or blank',
+      message: 'Question type must be single, multiple, blank, or matrix',
     },
     default: 'single',
   },
@@ -43,6 +57,17 @@ const slipTestQuestionSchema = new mongoose.Schema({
         return value.length >= MIN_OPTIONS && value.length <= MAX_OPTIONS;
       },
       message: `A choice question needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options`,
+    },
+  },
+  rows: {
+    type: [slipTestRowSchema],
+    default: [],
+    validate: {
+      validator(value) {
+        if (this.type !== 'matrix') return true;
+        return value.length >= MIN_MATRIX_ROWS && value.length <= MAX_MATRIX_ROWS;
+      },
+      message: `A matrix question needs between ${MIN_MATRIX_ROWS} and ${MAX_MATRIX_ROWS} rows`,
     },
   },
   correctOptions: {
@@ -65,6 +90,10 @@ const slipTestQuestionSchema = new mongoose.Schema({
       },
       message: `A blank question needs between ${MIN_BLANK_ANSWERS} and ${MAX_BLANK_ANSWERS} accepted answers`,
     },
+  },
+  correctMatrix: {
+    type: [Number],
+    default: [],
   },
   marks: {
     type: Number,

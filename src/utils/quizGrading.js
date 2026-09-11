@@ -1,9 +1,11 @@
-export const QUESTION_TYPES = ['single', 'multiple', 'blank'];
+export const QUESTION_TYPES = ['single', 'multiple', 'blank', 'matrix'];
 
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 6;
 export const MIN_BLANK_ANSWERS = 1;
 export const MAX_BLANK_ANSWERS = 6;
+export const MIN_MATRIX_ROWS = 2;
+export const MAX_MATRIX_ROWS = 8;
 
 export const RESULT_TIERS = [
   {
@@ -92,6 +94,7 @@ function answersMatch(given, acceptedList) {
  * awarded when every option the student picked is correct but some are missing.
  * Picking any wrong option makes the whole answer wrong.
  * Fill-in-the-blank answers are matched case-insensitively against accepted texts.
+ * Matrix questions score one column pick per row (partial credit is per-row).
  */
 function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCredit }) {
   if (question.type === 'blank') {
@@ -104,6 +107,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
         selected: [],
         textAnswer: '',
         correctAnswers,
+        matrixAnswers: [],
+        correctMatrix: [],
         outcome: 'unanswered',
         awardedMarks: 0,
       };
@@ -114,6 +119,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
         selected: [],
         textAnswer,
         correctAnswers,
+        matrixAnswers: [],
+        correctMatrix: [],
         outcome: 'correct',
         awardedMarks: round2(marks),
       };
@@ -123,6 +130,75 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
       selected: [],
       textAnswer,
       correctAnswers,
+      matrixAnswers: [],
+      correctMatrix: [],
+      outcome: 'wrong',
+      awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)),
+    };
+  }
+
+  if (question.type === 'matrix') {
+    const rows = Array.isArray(question.rows) ? question.rows : [];
+    const columns = Array.isArray(question.options) ? question.options : [];
+    const correctMatrix = rows.map((_, index) => {
+      const value = Number(question.correctMatrix?.[index]);
+      return Number.isInteger(value) ? value : -1;
+    });
+    const rawAnswers = Array.isArray(answer?.matrixAnswers) ? answer.matrixAnswers : [];
+    const matrixAnswers = rows.map((_, index) => {
+      const value = Number(rawAnswers[index]);
+      return Number.isInteger(value) && value >= 0 && value < columns.length ? value : -1;
+    });
+    const marks = Number(question.marks || 0);
+    const answeredCount = matrixAnswers.filter((value) => value >= 0).length;
+
+    if (answeredCount === 0) {
+      return {
+        selected: [],
+        textAnswer: '',
+        correctAnswers: [],
+        matrixAnswers,
+        correctMatrix,
+        outcome: 'unanswered',
+        awardedMarks: 0,
+      };
+    }
+
+    let correctRows = 0;
+    matrixAnswers.forEach((pick, index) => {
+      if (pick >= 0 && pick === correctMatrix[index]) correctRows += 1;
+    });
+
+    if (correctRows === rows.length) {
+      return {
+        selected: [],
+        textAnswer: '',
+        correctAnswers: [],
+        matrixAnswers,
+        correctMatrix,
+        outcome: 'correct',
+        awardedMarks: round2(marks),
+      };
+    }
+
+    if (allowPartialCredit && correctRows > 0) {
+      return {
+        selected: [],
+        textAnswer: '',
+        correctAnswers: [],
+        matrixAnswers,
+        correctMatrix,
+        outcome: 'partial',
+        awardedMarks: round2((marks * correctRows) / rows.length),
+      };
+    }
+
+    return {
+      selected: [],
+      textAnswer: '',
+      correctAnswers: [],
+      matrixAnswers,
+      correctMatrix,
       outcome: 'wrong',
       awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)),
     };
@@ -137,6 +213,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
       selected,
       textAnswer: '',
       correctAnswers: [],
+      matrixAnswers: [],
+      correctMatrix: [],
       outcome: 'unanswered',
       awardedMarks: 0,
     };
@@ -147,6 +225,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
       selected,
       textAnswer: '',
       correctAnswers: [],
+      matrixAnswers: [],
+      correctMatrix: [],
       outcome: 'correct',
       awardedMarks: round2(marks),
     };
@@ -159,6 +239,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
       selected,
       textAnswer: '',
       correctAnswers: [],
+      matrixAnswers: [],
+      correctMatrix: [],
       outcome: 'partial',
       awardedMarks: round2((marks * selected.length) / correct.length),
     };
@@ -168,6 +250,8 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
     selected,
     textAnswer: '',
     correctAnswers: [],
+    matrixAnswers: [],
+    correctMatrix: [],
     outcome: 'wrong',
     awardedMarks: round2(-Math.abs(negativeMarkPerWrong || 0)),
   };
@@ -175,7 +259,7 @@ function gradeQuestion(question, answer, { negativeMarkPerWrong, allowPartialCre
 
 /**
  * Grades a whole attempt. `answers` is a list of
- * { questionId, selectedOptions?, textAnswer? }.
+ * { questionId, selectedOptions?, textAnswer?, matrixAnswers? }.
  * Returns the per-question breakdown plus the totals stored on the attempt.
  */
 export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWrong = 0, allowPartialCredit = true }) {
@@ -185,6 +269,7 @@ export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWron
     answerByQuestion.set(String(answer.questionId), {
       selectedOptions: answer.selectedOptions || [],
       textAnswer: answer.textAnswer || '',
+      matrixAnswers: Array.isArray(answer.matrixAnswers) ? answer.matrixAnswers : [],
     });
   });
 
@@ -200,9 +285,11 @@ export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWron
     return {
       question: question._id,
       selectedOptions: graded.selected,
-      correctOptions: question.type === 'blank' ? [] : uniqueSorted(question.correctOptions),
+      correctOptions: question.type === 'blank' || question.type === 'matrix' ? [] : uniqueSorted(question.correctOptions),
       textAnswer: graded.textAnswer,
       correctAnswers: graded.correctAnswers,
+      matrixAnswers: graded.matrixAnswers,
+      correctMatrix: graded.correctMatrix,
       outcome: graded.outcome,
       awardedMarks: graded.awardedMarks,
     };
@@ -244,7 +331,7 @@ export function validateQuestions(questions) {
     }
 
     if (!QUESTION_TYPES.includes(question?.type)) {
-      errors.push(`${label}: type must be single choice, multi-select, or fill in the blanks.`);
+      errors.push(`${label}: type must be single choice, multi-select, fill in the blanks, or matrix.`);
     }
 
     const marks = Number(question?.marks);
@@ -261,6 +348,39 @@ export function validateQuestions(questions) {
       }
       if (accepted.some((answer) => answer.length > 200)) {
         errors.push(`${label}: each accepted answer can be at most 200 characters.`);
+      }
+      return;
+    }
+
+    if (question?.type === 'matrix') {
+      const rows = Array.isArray(question?.rows) ? question.rows : [];
+      const columns = Array.isArray(question?.options) ? question.options : [];
+      if (rows.length < MIN_MATRIX_ROWS || rows.length > MAX_MATRIX_ROWS) {
+        errors.push(
+          `${label}: matrix needs between ${MIN_MATRIX_ROWS} and ${MAX_MATRIX_ROWS} rows.`
+        );
+      }
+      if (rows.some((row) => !row?.text?.trim())) {
+        errors.push(`${label}: every matrix row needs text.`);
+      }
+      if (columns.length < MIN_OPTIONS || columns.length > MAX_OPTIONS) {
+        errors.push(
+          `${label}: matrix needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} columns.`
+        );
+      }
+      if (columns.some((column) => !column?.text?.trim())) {
+        errors.push(`${label}: every matrix column needs text.`);
+      }
+      const correctMatrix = Array.isArray(question?.correctMatrix) ? question.correctMatrix : [];
+      if (correctMatrix.length !== rows.length) {
+        errors.push(`${label}: mark the correct column for every matrix row.`);
+      }
+      if (
+        correctMatrix.some(
+          (value) => !Number.isInteger(Number(value)) || Number(value) < 0 || Number(value) >= columns.length
+        )
+      ) {
+        errors.push(`${label}: a matrix correct answer points to a column that does not exist.`);
       }
       return;
     }
@@ -298,8 +418,25 @@ export function normaliseQuestions(questions = []) {
         text: question.text.trim(),
         type: 'blank',
         options: [],
+        rows: [],
         correctOptions: [],
         correctAnswers: cleanAnswerList(question.correctAnswers),
+        correctMatrix: [],
+        marks: Number(question.marks),
+        explanation: (question.explanation || '').trim(),
+      };
+    }
+
+    if (question.type === 'matrix') {
+      const rows = (question.rows || []).map((row) => ({ text: String(row?.text || '').trim() }));
+      return {
+        text: question.text.trim(),
+        type: 'matrix',
+        options: (question.options || []).map((option) => ({ text: option.text.trim() })),
+        rows,
+        correctOptions: [],
+        correctAnswers: [],
+        correctMatrix: rows.map((_, index) => Number(question.correctMatrix?.[index])),
         marks: Number(question.marks),
         explanation: (question.explanation || '').trim(),
       };
@@ -309,8 +446,10 @@ export function normaliseQuestions(questions = []) {
       text: question.text.trim(),
       type: question.type,
       options: question.options.map((option) => ({ text: option.text.trim() })),
+      rows: [],
       correctOptions: uniqueSorted(question.correctOptions),
       correctAnswers: [],
+      correctMatrix: [],
       marks: Number(question.marks),
       explanation: (question.explanation || '').trim(),
     };

@@ -13,8 +13,10 @@ function toQuestionJson(question) {
     text: question.text,
     type: question.type,
     options: question.options.map((option) => ({ text: option.text })),
+    rows: (question.rows || []).map((row) => ({ text: row.text })),
     correctOptions: question.correctOptions,
     correctAnswers: question.correctAnswers || [],
+    correctMatrix: question.correctMatrix || [],
     marks: question.marks,
     explanation: question.explanation,
   };

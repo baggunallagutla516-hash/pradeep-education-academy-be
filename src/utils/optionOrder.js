@@ -15,7 +15,12 @@ function shuffleIndexes(length) {
 /** Build a fresh optionOrder payload for every choice question on an assessment. */
 export function buildOptionOrder(questions = []) {
   return questions
-    .filter((question) => question.type !== 'blank' && Array.isArray(question.options))
+    .filter(
+      (question) =>
+        question.type !== 'blank' &&
+        question.type !== 'matrix' &&
+        Array.isArray(question.options)
+    )
     .map((question) => ({
       question: question._id,
       order: shuffleIndexes(question.options.length),
@@ -61,6 +66,11 @@ export function toShuffledOptions(question, orderByQuestion) {
   if (!question || question.type === 'blank') return [];
 
   const options = question.options || [];
+  // Keep matrix column order stable (Likert / scale labels).
+  if (question.type === 'matrix') {
+    return options.map((option, index) => ({ index, text: option.text }));
+  }
+
   const stored = orderByQuestion?.get(String(question._id));
   const order =
     Array.isArray(stored) && stored.length === options.length

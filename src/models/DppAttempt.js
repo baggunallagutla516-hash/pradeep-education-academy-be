@@ -24,6 +24,14 @@ const dppResponseSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    matrixAnswers: {
+      type: [Number],
+      default: [],
+    },
+    correctMatrix: {
+      type: [Number],
+      default: [],
+    },
     outcome: {
       type: String,
       enum: ['correct', 'partial', 'wrong', 'unanswered'],

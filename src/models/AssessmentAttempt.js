@@ -14,6 +14,14 @@ const assessmentResponseSchema = new mongoose.Schema(
       type: [Number],
       default: [],
     },
+    matrixAnswers: {
+      type: [Number],
+      default: [],
+    },
+    correctMatrix: {
+      type: [Number],
+      default: [],
+    },
     outcome: {
       type: String,
       enum: ['correct', 'partial', 'wrong', 'unanswered'],

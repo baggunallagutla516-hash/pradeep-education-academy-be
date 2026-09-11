@@ -27,6 +27,10 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
     marks: question.marks,
     section: question.section || 'Section A',
     options: toShuffledOptions(question, orderByQuestion),
+    rows:
+      question.type === 'matrix'
+        ? (question.rows || []).map((row, rowIndex) => ({ index: rowIndex, text: row.text }))
+        : [],
   };
 }
 
@@ -413,10 +417,16 @@ function buildResult(assessment, attempt) {
         type: question?.type || 'single',
         marks: question?.marks || 0,
         options: toShuffledOptions(question, orderByQuestion),
+        rows:
+          question?.type === 'matrix'
+            ? (question.rows || []).map((row, rowIndex) => ({ index: rowIndex, text: row.text }))
+            : [],
         selectedOptions: response.selectedOptions,
         correctOptions: response.correctOptions,
         textAnswer: '',
         correctAnswers: [],
+        matrixAnswers: response.matrixAnswers || [],
+        correctMatrix: response.correctMatrix || [],
         outcome: response.outcome,
         awardedMarks: response.awardedMarks,
         explanation: question?.explanation || '',
