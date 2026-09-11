@@ -2,11 +2,20 @@ import { Educator } from '../models/Educator.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { signToken } from '../utils/tokens.js';
+import { createPasswordResetHandlers } from '../utils/passwordReset.js';
 import {
   clearEducatorAuthCookie,
   sendEducatorAuthResponse,
   toPublicEducator,
 } from '../utils/educatorAuthResponse.js';
+
+const {
+  forgotPassword: forgotEducatorPassword,
+  verifyResetOtp: verifyEducatorResetOtp,
+  resetPassword: resetEducatorPassword,
+} = createPasswordResetHandlers(Educator, { checkDeletedAt: true });
+
+export { forgotEducatorPassword, verifyEducatorResetOtp, resetEducatorPassword };
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);

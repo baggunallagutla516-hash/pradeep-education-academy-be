@@ -50,7 +50,7 @@ export const getPublishedPost = asyncHandler(async (req, res) => {
 export const listActiveNews = asyncHandler(async (_req, res) => {
   const items = await News.find({ isActive: true })
     .sort({ createdAt: -1 })
-    .select('text createdAt');
+    .select('text link createdAt');
 
   res.status(200).json({
     success: true,
@@ -58,6 +58,7 @@ export const listActiveNews = asyncHandler(async (_req, res) => {
       news: items.map((item) => ({
         id: item._id,
         text: item.text,
+        link: item.link || '',
         createdAt: item.createdAt,
       })),
     },

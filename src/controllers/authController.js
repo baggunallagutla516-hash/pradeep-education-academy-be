@@ -3,6 +3,7 @@ import { Parent } from '../models/Parent.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { signToken } from '../utils/tokens.js';
+import { createPasswordResetHandlers } from '../utils/passwordReset.js';
 import {
   clearAuthCookie,
   sendAuthResponse,
@@ -14,6 +15,14 @@ import {
   listActiveClasses,
   toPublicClass,
 } from '../utils/schoolClass.js';
+
+const {
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
+} = createPasswordResetHandlers(Student, { checkDeletedAt: true });
+
+export { forgotPassword, verifyResetOtp, resetPassword };
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
@@ -35,7 +44,7 @@ export const register = asyncHandler(async (req, res) => {
     confirmPassword,
   } = req.body;
 
-  if (!fullName || !email || !phone || !studentClass || !password || !confirmPassword) {
+  if (!fullName || !email || !phone || !studentClass || !schoolName?.trim() || !rollNumber?.trim() || !password || !confirmPassword) {
     throw new ApiError(400, 'Please fill in all required fields');
   }
 
@@ -63,8 +72,8 @@ export const register = asyncHandler(async (req, res) => {
     email: email.toLowerCase().trim(),
     phone: normalizedPhone,
     studentClass,
-    schoolName: schoolName?.trim() || '',
-    rollNumber: rollNumber?.trim() || '',
+    schoolName: schoolName.trim(),
+    rollNumber: rollNumber.trim(),
     password,
   });
 
@@ -181,6 +190,43 @@ export const updateMe = asyncHandler(async (req, res) => {
     data: {
       student: toPublicStudent(populated),
     },
+  });
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    throw new ApiError(400, 'Please fill in all password fields');
+  }
+
+  if (newPassword.length < 8) {
+    throw new ApiError(400, 'New password must be at least 8 characters');
+  }
+
+  if (newPassword !== confirmPassword) {
+    throw new ApiError(400, 'New passwords do not match');
+  }
+
+  if (currentPassword === newPassword) {
+    throw new ApiError(400, 'New password must be different from your current password');
+  }
+
+  const student = await Student.findById(req.user._id).select('+password');
+  if (!student) {
+    throw new ApiError(404, 'Student not found');
+  }
+
+  if (!(await student.comparePassword(currentPassword))) {
+    throw new ApiError(401, 'Current password is incorrect');
+  }
+
+  student.password = newPassword;
+  await student.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Password changed successfully',
   });
 });
 

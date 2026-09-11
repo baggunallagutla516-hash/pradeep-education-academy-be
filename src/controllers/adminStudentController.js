@@ -2,6 +2,8 @@ import { Student } from '../models/Student.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { toPublicStudent } from '../utils/authResponse.js';
+import { env } from '../config/env.js';
+import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { assertActiveClassId } from '../utils/schoolClass.js';
 
 function normalizePhone(phone) {
@@ -157,8 +159,24 @@ export const setStudentActive = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Student not found');
   }
 
+  const wasActive = Boolean(student.isActive);
   student.isActive = isActive;
   await student.save({ validateBeforeSave: false });
+
+  if (isActive && !wasActive && student.email) {
+    const clientOrigin = env.clientOrigins[0] || '';
+    const loginUrl = clientOrigin ? `${clientOrigin.replace(/\/$/, '')}/login` : '';
+    try {
+      await sendAccountActivatedEmail({
+        to: student.email,
+        name: student.fullName,
+        loginUrl,
+        roleLabel: 'student account',
+      });
+    } catch (err) {
+      console.error(`[mailer] Failed to email activation to ${student.email}:`, err?.message || err);
+    }
+  }
 
   res.status(200).json({
     success: true,

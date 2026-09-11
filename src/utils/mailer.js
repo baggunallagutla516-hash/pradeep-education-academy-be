@@ -89,6 +89,7 @@ export async function sendAssessmentResultsReleasedEmail({
   to,
   studentName,
   assessmentTitle,
+  title,
   resultUrl,
 }) {
   const transport = getTransporter();
@@ -101,7 +102,7 @@ export async function sendAssessmentResultsReleasedEmail({
   }
 
   const safeName = studentName || 'Student';
-  const safeTitle = assessmentTitle || 'Assessment';
+  const safeTitle = title || assessmentTitle || 'Assessment';
   const text = [
     `Hello ${safeName},`,
     '',
@@ -144,6 +145,123 @@ export async function sendAssessmentResultsReleasedEmail({
     from: `"${env.siteName}" <${env.smtp.from}>`,
     to,
     subject: `Results released: ${safeTitle}`,
+    text,
+    html,
+  });
+
+  return { sent: true };
+}
+
+/**
+ * Sends a password-reset OTP to a student.
+ */
+export async function sendPasswordResetOtpEmail({ to, name, studentName, otp }) {
+  const transport = getTransporter();
+
+  if (!transport) {
+    console.warn(
+      '[mailer] SMTP is not configured. Password reset OTP was not sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.'
+    );
+    return { sent: false, skipped: true };
+  }
+
+  const safeName = name || studentName || 'User';
+  const text = [
+    `Hello ${safeName},`,
+    '',
+    `Your password reset code for ${env.siteName} is: ${otp}`,
+    '',
+    'This code expires in 10 minutes.',
+    'If you did not request a password reset, you can ignore this email.',
+    '',
+    `— ${env.siteName}`,
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
+      <p style="margin: 0 0 12px;">Hello ${escapeHtml(safeName)},</p>
+      <p style="margin: 0 0 12px;">Use this code to reset your password:</p>
+      <p style="margin: 0 0 16px; font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #0f766e;">
+        ${escapeHtml(otp)}
+      </p>
+      <p style="margin: 0 0 12px; color: #555;">This code expires in 10 minutes.</p>
+      <p style="margin: 0 0 16px; color: #777; font-size: 13px;">
+        If you did not request a password reset, you can ignore this email.
+      </p>
+      <p style="margin: 0; color: #777; font-size: 13px;">— ${escapeHtml(env.siteName)}</p>
+    </div>
+  `;
+
+  await transport.sendMail({
+    from: `"${env.siteName}" <${env.smtp.from}>`,
+    to,
+    subject: `Password reset code — ${env.siteName}`,
+    text,
+    html,
+  });
+
+  return { sent: true };
+}
+
+/**
+ * Notifies a user that their account was activated and they can log in.
+ */
+export async function sendAccountActivatedEmail({
+  to,
+  name,
+  loginUrl,
+  roleLabel = 'account',
+}) {
+  const transport = getTransporter();
+
+  if (!transport) {
+    console.warn(
+      '[mailer] SMTP is not configured. Account activated but email was not sent. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.'
+    );
+    return { sent: false, skipped: true };
+  }
+
+  const safeName = name || 'there';
+  const text = [
+    `Hello ${safeName},`,
+    '',
+    `Good news — your ${roleLabel} at ${env.siteName} has been activated.`,
+    '',
+    'You can now log in and start using the portal.',
+    loginUrl ? `Login here: ${loginUrl}` : '',
+    '',
+    `— ${env.siteName}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
+      <p style="margin: 0 0 12px;">Hello ${escapeHtml(safeName)},</p>
+      <p style="margin: 0 0 12px;">
+        Good news — your <strong>${escapeHtml(roleLabel)}</strong> at
+        <strong>${escapeHtml(env.siteName)}</strong> has been activated.
+      </p>
+      <p style="margin: 0 0 16px; color: #555;">
+        Please log in to continue.
+      </p>
+      ${
+        loginUrl
+          ? `<p style="margin: 0 0 16px;">
+              <a href="${escapeHtml(loginUrl)}" style="display:inline-block;padding:10px 16px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+                Log in now
+              </a>
+            </p>`
+          : ''
+      }
+      <p style="margin: 0; color: #777; font-size: 13px;">— ${escapeHtml(env.siteName)}</p>
+    </div>
+  `;
+
+  await transport.sendMail({
+    from: `"${env.siteName}" <${env.smtp.from}>`,
+    to,
+    subject: `Your account is activated — ${env.siteName}`,
     text,
     html,
   });

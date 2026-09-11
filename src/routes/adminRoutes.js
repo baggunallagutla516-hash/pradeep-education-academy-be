@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { adminLogin, adminLogout, getAdminMe } from '../controllers/adminAuthController.js';
+import {
+  adminLogin,
+  adminLogout,
+  forgotAdminPassword,
+  getAdminMe,
+  resetAdminPassword,
+  verifyAdminResetOtp,
+} from '../controllers/adminAuthController.js';
 import { getDashboardStats } from '../controllers/adminDashboardController.js';
 import {
   getStudent,
@@ -65,6 +72,7 @@ import {
   getDpp,
   listDppResults,
   listDpps,
+  releaseDppResults,
   updateDpp,
 } from '../controllers/adminDppController.js';
 import {
@@ -73,6 +81,7 @@ import {
   getSlipTest,
   listSlipTestResults,
   listSlipTests,
+  releaseSlipTestResults,
   updateSlipTest,
 } from '../controllers/adminSlipTestController.js';
 import {
@@ -118,10 +127,24 @@ const loginLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many password reset requests. Please try again in 15 minutes.',
+  },
+});
+
 const router = Router();
 
 router.post('/login', loginLimiter, adminLogin);
 router.post('/logout', adminLogout);
+router.post('/forgot-password', forgotPasswordLimiter, forgotAdminPassword);
+router.post('/verify-reset-otp', loginLimiter, verifyAdminResetOtp);
+router.post('/reset-password', loginLimiter, resetAdminPassword);
 router.get('/me', protectAdmin, getAdminMe);
 
 router.get('/dashboard', protectAdmin, getDashboardStats);
@@ -186,6 +209,7 @@ router.delete('/assessments/:id', protectAdmin, deleteAssessment);
 router.get('/dpps', protectAdmin, listDpps);
 router.get('/dpps/:id', protectAdmin, getDpp);
 router.get('/dpps/:id/results', protectAdmin, listDppResults);
+router.post('/dpps/:id/release-results', protectAdmin, releaseDppResults);
 router.post('/dpps', protectAdmin, createDpp);
 router.patch('/dpps/:id', protectAdmin, updateDpp);
 router.delete('/dpps/:id', protectAdmin, deleteDpp);
@@ -193,6 +217,7 @@ router.delete('/dpps/:id', protectAdmin, deleteDpp);
 router.get('/slip-tests', protectAdmin, listSlipTests);
 router.get('/slip-tests/:id', protectAdmin, getSlipTest);
 router.get('/slip-tests/:id/results', protectAdmin, listSlipTestResults);
+router.post('/slip-tests/:id/release-results', protectAdmin, releaseSlipTestResults);
 router.post('/slip-tests', protectAdmin, createSlipTest);
 router.patch('/slip-tests/:id', protectAdmin, updateSlipTest);
 router.delete('/slip-tests/:id', protectAdmin, deleteSlipTest);

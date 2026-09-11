@@ -2,11 +2,20 @@ import { Admin } from '../models/Admin.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { signAdminToken } from '../utils/tokens.js';
+import { createPasswordResetHandlers } from '../utils/passwordReset.js';
 import {
   clearAdminAuthCookie,
   sendAdminAuthResponse,
   toPublicAdmin,
 } from '../utils/adminAuthResponse.js';
+
+const {
+  forgotPassword: forgotAdminPassword,
+  verifyResetOtp: verifyAdminResetOtp,
+  resetPassword: resetAdminPassword,
+} = createPasswordResetHandlers(Admin);
+
+export { forgotAdminPassword, verifyAdminResetOtp, resetAdminPassword };
 
 export const adminLogin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;

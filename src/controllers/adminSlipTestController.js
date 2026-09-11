@@ -2,8 +2,10 @@ import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import { env } from '../config/env.js';
 import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
+import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 
 function toQuestionJson(question) {
   return {
@@ -33,6 +35,8 @@ function toSlipTestJson(doc, extra = {}) {
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
     showAnswersAfterSubmit: doc.showAnswersAfterSubmit,
+    resultsReleased: Boolean(doc.resultsReleased),
+    resultsReleasedAt: doc.resultsReleasedAt || null,
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     isPublished: doc.isPublished,
@@ -137,6 +141,10 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
   const slipTest = await SlipTest.findById(req.params.id);
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
+  if (slipTest.isPublished) {
+    throw new ApiError(400, 'Published slip tests cannot be edited');
+  }
+
   const { title, description, studentClass, subject, chapter, topic, questions } = req.body;
 
   if (title !== undefined) {
@@ -239,6 +247,70 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
         autoSubmitted: attempt.autoSubmitted,
         submittedAt: attempt.submittedAt,
       })),
+    },
+  });
+});
+
+export const releaseSlipTestResults = asyncHandler(async (req, res) => {
+  const slipTest = await SlipTest.findById(req.params.id).populate('studentClass', 'name');
+  if (!slipTest) throw new ApiError(404, 'Slip test not found');
+
+  const attempts = await SlipTestAttempt.find({
+    slipTest: slipTest._id,
+    status: 'submitted',
+  }).populate('student', 'fullName email isActive deletedAt');
+
+  const alreadyReleased = Boolean(slipTest.resultsReleased);
+  if (!alreadyReleased) {
+    slipTest.resultsReleased = true;
+    slipTest.resultsReleasedAt = new Date();
+    await slipTest.save();
+  }
+
+  const clientOrigin = env.clientOrigins[0] || '';
+  const resultUrl = clientOrigin
+    ? `${clientOrigin.replace(/\/$/, '')}/slip-tests/${slipTest._id}/result`
+    : '';
+
+  let emailed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const attempt of attempts) {
+    const student = attempt.student;
+    if (!student?.email || student.deletedAt || student.isActive === false) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const outcome = await sendAssessmentResultsReleasedEmail({
+        to: student.email,
+        studentName: student.fullName,
+        title: slipTest.title,
+        resultUrl,
+      });
+      if (outcome.sent) emailed += 1;
+      else skipped += 1;
+    } catch (err) {
+      failed += 1;
+      console.error(`[mailer] Failed to email ${student.email}:`, err?.message || err);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: alreadyReleased
+      ? 'Results were already released. Notification emails were sent again.'
+      : 'Results released. Students can now view scores on the site.',
+    data: {
+      slipTest: toSlipTestJson(slipTest),
+      notify: {
+        recipients: attempts.length,
+        emailed,
+        skipped,
+        failed,
+      },
     },
   });
 });

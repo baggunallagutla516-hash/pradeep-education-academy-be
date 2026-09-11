@@ -2,8 +2,10 @@ import { Dpp } from '../models/Dpp.js';
 import { DppAttempt } from '../models/DppAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
+import { env } from '../config/env.js';
 import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
+import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 
 function toQuestionJson(question) {
   return {
@@ -32,6 +34,8 @@ function toDppJson(doc, extra = {}) {
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
     showAnswersAfterSubmit: doc.showAnswersAfterSubmit,
+    resultsReleased: Boolean(doc.resultsReleased),
+    resultsReleasedAt: doc.resultsReleasedAt || null,
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     isPublished: doc.isPublished,
@@ -138,6 +142,10 @@ export const updateDpp = asyncHandler(async (req, res) => {
   const dpp = await Dpp.findById(req.params.id);
   if (!dpp) throw new ApiError(404, 'DPP not found');
 
+  if (dpp.isPublished) {
+    throw new ApiError(400, 'Published DPPs cannot be edited');
+  }
+
   const { title, description, studentClass, subject, practiceDate, questions } = req.body;
 
   if (title !== undefined) {
@@ -236,6 +244,70 @@ export const listDppResults = asyncHandler(async (req, res) => {
         autoSubmitted: attempt.autoSubmitted,
         submittedAt: attempt.submittedAt,
       })),
+    },
+  });
+});
+
+export const releaseDppResults = asyncHandler(async (req, res) => {
+  const dpp = await Dpp.findById(req.params.id).populate('studentClass', 'name');
+  if (!dpp) throw new ApiError(404, 'DPP not found');
+
+  const attempts = await DppAttempt.find({
+    dpp: dpp._id,
+    status: 'submitted',
+  }).populate('student', 'fullName email isActive deletedAt');
+
+  const alreadyReleased = Boolean(dpp.resultsReleased);
+  if (!alreadyReleased) {
+    dpp.resultsReleased = true;
+    dpp.resultsReleasedAt = new Date();
+    await dpp.save();
+  }
+
+  const clientOrigin = env.clientOrigins[0] || '';
+  const resultUrl = clientOrigin
+    ? `${clientOrigin.replace(/\/$/, '')}/dpps/${dpp._id}/result`
+    : '';
+
+  let emailed = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const attempt of attempts) {
+    const student = attempt.student;
+    if (!student?.email || student.deletedAt || student.isActive === false) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      const outcome = await sendAssessmentResultsReleasedEmail({
+        to: student.email,
+        studentName: student.fullName,
+        title: dpp.title,
+        resultUrl,
+      });
+      if (outcome.sent) emailed += 1;
+      else skipped += 1;
+    } catch (err) {
+      failed += 1;
+      console.error(`[mailer] Failed to email ${student.email}:`, err?.message || err);
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    message: alreadyReleased
+      ? 'Results were already released. Notification emails were sent again.'
+      : 'Results released. Students can now view scores on the site.',
+    data: {
+      dpp: toDppJson(dpp),
+      notify: {
+        recipients: attempts.length,
+        emailed,
+        skipped,
+        failed,
+      },
     },
   });
 });

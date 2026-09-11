@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
+  forgotEducatorPassword,
   getEducatorMe,
   loginEducator,
   logoutEducator,
   registerEducator,
+  resetEducatorPassword,
   updateEducatorMe,
+  verifyEducatorResetOtp,
 } from '../controllers/educatorAuthController.js';
 import {
   getEducatorWorksheet,
@@ -32,11 +35,25 @@ const authLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many password reset requests. Please try again in 15 minutes.',
+  },
+});
+
 const router = Router();
 
 router.post('/register', authLimiter, registerEducator);
 router.post('/login', authLimiter, loginEducator);
 router.post('/logout', logoutEducator);
+router.post('/forgot-password', forgotPasswordLimiter, forgotEducatorPassword);
+router.post('/verify-reset-otp', authLimiter, verifyEducatorResetOtp);
+router.post('/reset-password', authLimiter, resetEducatorPassword);
 router.get('/me', protectEducator, getEducatorMe);
 router.patch('/me', protectEducator, updateEducatorMe);
 

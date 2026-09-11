@@ -32,6 +32,8 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 
 function toDppSummaryJson(doc, attempt) {
   const classFields = classRefFields(doc.studentClass);
+  const submitted = attempt?.status === 'submitted';
+  const resultsReleased = Boolean(doc.resultsReleased);
   return {
     id: doc._id,
     title: doc.title,
@@ -46,8 +48,10 @@ function toDppSummaryJson(doc, attempt) {
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    scoredMarks: attempt?.status === 'submitted' ? attempt.scoredMarks : null,
-    percentage: attempt?.status === 'submitted' ? attempt.percentage : null,
+    resultsReleased,
+    resultsReleasedAt: doc.resultsReleasedAt || null,
+    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
+    percentage: submitted && resultsReleased ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -228,10 +232,29 @@ export const submitStudentDpp = asyncHandler(async (req, res) => {
 
   await attempt.save();
 
+  if (!dpp.resultsReleased) {
+    res.status(200).json({
+      success: true,
+      message: 'DPP submitted. Results will be available after the academy releases them.',
+      data: {
+        resultsHeld: true,
+        submittedAt: attempt.submittedAt,
+        dpp: {
+          id: dpp._id,
+          title: dpp.title,
+          subject: dpp.subject,
+          practiceDate: dpp.practiceDate,
+          resultsReleased: false,
+        },
+      },
+    });
+    return;
+  }
+
   res.status(200).json({
     success: true,
     message: 'DPP submitted',
-    data: { result: buildResult(dpp, attempt) },
+    data: { result: buildResult(dpp, attempt), resultsHeld: false },
   });
 });
 
@@ -246,9 +269,27 @@ export const getStudentDppResult = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No submitted attempt for this DPP yet');
   }
 
+  if (!dpp.resultsReleased) {
+    res.status(200).json({
+      success: true,
+      data: {
+        resultsHeld: true,
+        submittedAt: attempt.submittedAt,
+        dpp: {
+          id: dpp._id,
+          title: dpp.title,
+          subject: dpp.subject,
+          practiceDate: dpp.practiceDate,
+          resultsReleased: false,
+        },
+      },
+    });
+    return;
+  }
+
   res.status(200).json({
     success: true,
-    data: { result: buildResult(dpp, attempt) },
+    data: { result: buildResult(dpp, attempt), resultsHeld: false },
   });
 });
 

@@ -1,6 +1,8 @@
 import { Educator } from '../models/Educator.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { env } from '../config/env.js';
+import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { toPublicEducator } from '../utils/educatorAuthResponse.js';
 
 function normalizePhone(phone) {
@@ -122,8 +124,24 @@ export const setEducatorActive = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Educator not found');
   }
 
+  const wasActive = Boolean(educator.isActive);
   educator.isActive = isActive;
   await educator.save({ validateBeforeSave: false });
+
+  if (isActive && !wasActive && educator.email) {
+    const clientOrigin = env.clientOrigins[0] || '';
+    const loginUrl = clientOrigin ? `${clientOrigin.replace(/\/$/, '')}/educator/login` : '';
+    try {
+      await sendAccountActivatedEmail({
+        to: educator.email,
+        name: educator.fullName,
+        loginUrl,
+        roleLabel: 'educator account',
+      });
+    } catch (err) {
+      console.error(`[mailer] Failed to email activation to ${educator.email}:`, err?.message || err);
+    }
+  }
 
   res.status(200).json({
     success: true,

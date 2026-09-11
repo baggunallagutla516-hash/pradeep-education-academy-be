@@ -32,6 +32,8 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 
 function toSlipTestSummaryJson(doc, attempt) {
   const classFields = classRefFields(doc.studentClass);
+  const submitted = attempt?.status === 'submitted';
+  const resultsReleased = Boolean(doc.resultsReleased);
   return {
     id: doc._id,
     title: doc.title,
@@ -47,8 +49,10 @@ function toSlipTestSummaryJson(doc, attempt) {
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    scoredMarks: attempt?.status === 'submitted' ? attempt.scoredMarks : null,
-    percentage: attempt?.status === 'submitted' ? attempt.percentage : null,
+    resultsReleased,
+    resultsReleasedAt: doc.resultsReleasedAt || null,
+    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
+    percentage: submitted && resultsReleased ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -231,10 +235,29 @@ export const submitStudentSlipTest = asyncHandler(async (req, res) => {
 
   await attempt.save();
 
+  if (!slipTest.resultsReleased) {
+    res.status(200).json({
+      success: true,
+      message: 'Slip test submitted. Results will be available after the academy releases them.',
+      data: {
+        resultsHeld: true,
+        submittedAt: attempt.submittedAt,
+        slipTest: {
+          id: slipTest._id,
+          title: slipTest.title,
+          subject: slipTest.subject,
+          chapter: slipTest.chapter,
+          resultsReleased: false,
+        },
+      },
+    });
+    return;
+  }
+
   res.status(200).json({
     success: true,
     message: 'Slip test submitted',
-    data: { result: buildResult(slipTest, attempt) },
+    data: { result: buildResult(slipTest, attempt), resultsHeld: false },
   });
 });
 
@@ -249,9 +272,27 @@ export const getStudentSlipTestResult = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No submitted attempt for this slip test yet');
   }
 
+  if (!slipTest.resultsReleased) {
+    res.status(200).json({
+      success: true,
+      data: {
+        resultsHeld: true,
+        submittedAt: attempt.submittedAt,
+        slipTest: {
+          id: slipTest._id,
+          title: slipTest.title,
+          subject: slipTest.subject,
+          chapter: slipTest.chapter,
+          resultsReleased: false,
+        },
+      },
+    });
+    return;
+  }
+
   res.status(200).json({
     success: true,
-    data: { result: buildResult(slipTest, attempt) },
+    data: { result: buildResult(slipTest, attempt), resultsHeld: false },
   });
 });
 

@@ -5,12 +5,21 @@ import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { signToken } from '../utils/tokens.js';
+import { createPasswordResetHandlers } from '../utils/passwordReset.js';
 import {
   clearParentAuthCookie,
   sendParentAuthResponse,
   toPublicParent,
 } from '../utils/parentAuthResponse.js';
 import { toPublicStudent } from '../utils/authResponse.js';
+
+const {
+  forgotPassword: forgotParentPassword,
+  verifyResetOtp: verifyParentResetOtp,
+  resetPassword: resetParentPassword,
+} = createPasswordResetHandlers(Parent);
+
+export { forgotParentPassword, verifyParentResetOtp, resetParentPassword };
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
@@ -33,6 +42,7 @@ async function loadLinkedChild(parentId, studentId) {
 }
 
 function mapAttemptResult(attempt, assessment, kind) {
+  const released = Boolean(assessment?.resultsReleased);
   return {
     id: attempt._id,
     kind,
@@ -41,13 +51,14 @@ function mapAttemptResult(attempt, assessment, kind) {
     subject: assessment?.subject || '',
     chapter: assessment?.chapter || '',
     date: assessment?.practiceDate || assessment?.publishedAt || attempt.submittedAt,
-    scoredMarks: attempt.scoredMarks,
+    resultsReleased: released,
+    scoredMarks: released ? attempt.scoredMarks : null,
     totalMarks: attempt.totalMarks,
-    percentage: attempt.percentage,
-    correctCount: attempt.correctCount,
-    partialCount: attempt.partialCount,
-    wrongCount: attempt.wrongCount,
-    unansweredCount: attempt.unansweredCount,
+    percentage: released ? attempt.percentage : null,
+    correctCount: released ? attempt.correctCount : null,
+    partialCount: released ? attempt.partialCount : null,
+    wrongCount: released ? attempt.wrongCount : null,
+    unansweredCount: released ? attempt.unansweredCount : null,
     timeTakenSeconds: attempt.timeTakenSeconds,
     autoSubmitted: attempt.autoSubmitted,
     submittedAt: attempt.submittedAt,
@@ -174,10 +185,10 @@ export const getChildResults = asyncHandler(async (req, res) => {
 
   const [dppAttempts, slipAttempts] = await Promise.all([
     DppAttempt.find({ student: student._id, status: 'submitted' })
-      .populate('dpp', 'title subject practiceDate publishedAt')
+      .populate('dpp', 'title subject practiceDate publishedAt resultsReleased')
       .sort({ submittedAt: -1 }),
     SlipTestAttempt.find({ student: student._id, status: 'submitted' })
-      .populate('slipTest', 'title subject chapter publishedAt')
+      .populate('slipTest', 'title subject chapter publishedAt resultsReleased')
       .sort({ submittedAt: -1 }),
   ]);
 

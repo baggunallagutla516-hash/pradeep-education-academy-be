@@ -198,6 +198,10 @@ export const updateAssessment = asyncHandler(async (req, res) => {
   const assessment = await Assessment.findById(req.params.id);
   if (!assessment) throw new ApiError(404, 'Assessment not found');
 
+  if (assessment.isPublished) {
+    throw new ApiError(400, 'Published assessments cannot be edited');
+  }
+
   const { title, description, studentClass, subject, assessmentDate, questions, sections } =
     req.body;
 

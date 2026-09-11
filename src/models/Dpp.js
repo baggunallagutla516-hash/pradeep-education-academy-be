@@ -129,6 +129,14 @@ const dppSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    resultsReleased: {
+      type: Boolean,
+      default: false,
+    },
+    resultsReleasedAt: {
+      type: Date,
+      default: null,
+    },
     questions: {
       type: [dppQuestionSchema],
       default: [],

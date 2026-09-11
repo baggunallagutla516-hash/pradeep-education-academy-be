@@ -8,6 +8,19 @@ const newsSchema = new mongoose.Schema(
       trim: true,
       maxlength: [280, 'News text cannot exceed 280 characters'],
     },
+    link: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: [200, 'Link cannot exceed 200 characters'],
+      validate: {
+        validator(value) {
+          if (!value) return true;
+          return value.startsWith('/') && !value.startsWith('//');
+        },
+        message: 'Link must be an internal path starting with /',
+      },
+    },
     isActive: {
       type: Boolean,
       default: true,

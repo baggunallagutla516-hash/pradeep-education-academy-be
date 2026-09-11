@@ -1,6 +1,10 @@
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import validator from 'validator';
+import {
+  passwordResetSchemaFields,
+  stripPasswordResetFromJson,
+} from '../utils/passwordReset.js';
 
 const adminSchema = new mongoose.Schema(
   {
@@ -40,12 +44,14 @@ const adminSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    ...passwordResetSchemaFields,
   },
   {
     timestamps: true,
     toJSON: {
       transform(_doc, ret) {
         delete ret.password;
+        stripPasswordResetFromJson(ret);
         delete ret.__v;
         return ret;
       },
