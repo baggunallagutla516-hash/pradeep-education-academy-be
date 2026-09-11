@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
+import { readEndDate } from '../utils/examWindow.js';
 
 function toQuestionJson(question) {
   return {
@@ -33,6 +34,7 @@ function toSlipTestJson(doc, extra = {}) {
     subject: doc.subject,
     chapter: doc.chapter,
     topic: doc.topic,
+    endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -104,7 +106,7 @@ export const getSlipTest = asyncHandler(async (req, res) => {
 });
 
 export const createSlipTest = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, chapter, topic, questions } = req.body;
+  const { title, description, studentClass, subject, chapter, topic, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
   if (!chapter?.trim()) throw new ApiError(400, 'Chapter is required');
@@ -120,6 +122,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
     subject: (subject || '').trim(),
     chapter: chapter.trim(),
     topic: (topic || '').trim(),
+    endDate: readEndDate(endDate),
     durationMinutes: readDuration(req.body.durationMinutes),
     negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
     allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
@@ -147,7 +150,7 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Published slip tests cannot be edited');
   }
 
-  const { title, description, studentClass, subject, chapter, topic, questions } = req.body;
+  const { title, description, studentClass, subject, chapter, topic, endDate, questions } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -164,6 +167,7 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
     await assertActiveClassId(studentClass);
     slipTest.studentClass = studentClass;
   }
+  if (endDate !== undefined) slipTest.endDate = readEndDate(endDate);
   if (req.body.durationMinutes !== undefined) {
     slipTest.durationMinutes = readDuration(req.body.durationMinutes);
   }

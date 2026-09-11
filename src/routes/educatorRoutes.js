@@ -22,6 +22,13 @@ import {
   getEducatorCet,
   listEducatorCets,
 } from '../controllers/educatorCetController.js';
+import {
+  getEducatorQuiz,
+  getEducatorQuizResult,
+  listEducatorQuizzes,
+  startEducatorQuiz,
+  submitEducatorQuiz,
+} from '../controllers/educatorQuizController.js';
 import { protectEducator } from '../middleware/educatorAuth.js';
 
 const authLimiter = rateLimit({
@@ -65,5 +72,11 @@ router.get('/unit-tests/:id', protectEducator, getEducatorUnitTest);
 
 router.get('/cets', protectEducator, listEducatorCets);
 router.get('/cets/:id', protectEducator, getEducatorCet);
+
+router.get('/quizzes', protectEducator, listEducatorQuizzes);
+router.get('/quizzes/:id', protectEducator, getEducatorQuiz);
+router.post('/quizzes/:id/start', protectEducator, startEducatorQuiz);
+router.post('/quizzes/:id/submit', protectEducator, submitEducatorQuiz);
+router.get('/quizzes/:id/result', protectEducator, getEducatorQuizResult);
 
 export default router;

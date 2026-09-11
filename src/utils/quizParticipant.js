@@ -1,0 +1,318 @@
+import { Quiz } from '../models/Quiz.js';
+import { QuizAttempt } from '../models/QuizAttempt.js';
+import { ApiError } from './ApiError.js';
+import { gradeAttempt, resultTier } from './quizGrading.js';
+import {
+  buildOptionOrder,
+  ensureAttemptOptionOrder,
+  optionOrderMap,
+  toShuffledOptions,
+} from './optionOrder.js';
+import { assertExamOpen, isExamClosed } from './examWindow.js';
+
+function toAttemptQuestionJson(question, index, orderByQuestion) {
+  return {
+    id: question._id,
+    number: index + 1,
+    text: question.text,
+    type: question.type,
+    marks: question.marks,
+    options: toShuffledOptions(question, orderByQuestion),
+    rows: [],
+  };
+}
+
+function toQuizSummaryJson(doc, attempt) {
+  const submitted = attempt?.status === 'submitted';
+  const resultsReleased = Boolean(doc.resultsReleased);
+  return {
+    id: doc._id,
+    title: doc.title,
+    description: doc.description,
+    subject: doc.subject,
+    endDate: doc.endDate || null,
+    isClosed: isExamClosed(doc.endDate),
+    durationMinutes: doc.durationMinutes,
+    negativeMarkPerWrong: doc.negativeMarkPerWrong,
+    allowPartialCredit: doc.allowPartialCredit,
+    questionCount: doc.questions.length,
+    totalMarks: doc.totalMarks,
+    attemptStatus: attempt ? attempt.status : 'not_started',
+    resultsReleased,
+    resultsReleasedAt: doc.resultsReleasedAt || null,
+    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
+    percentage: submitted && resultsReleased ? attempt.percentage : null,
+    submittedAt: attempt?.submittedAt || null,
+  };
+}
+
+function remainingSeconds(attempt) {
+  return Math.max(0, Math.floor((new Date(attempt.expiresAt).getTime() - Date.now()) / 1000));
+}
+
+async function finaliseExpiredAttempt(attempt, quiz) {
+  const graded = gradeAttempt({
+    questions: quiz.questions,
+    answers: [],
+    negativeMarkPerWrong: quiz.negativeMarkPerWrong,
+    allowPartialCredit: quiz.allowPartialCredit,
+  });
+
+  Object.assign(attempt, graded, {
+    status: 'submitted',
+    submittedAt: attempt.expiresAt,
+    autoSubmitted: true,
+    timeTakenSeconds: quiz.durationMinutes * 60,
+  });
+
+  await attempt.save();
+  return attempt;
+}
+
+async function loadPublishedQuiz(quizId) {
+  const quiz = await Quiz.findOne({
+    _id: quizId,
+    isPublished: true,
+  });
+
+  if (!quiz) throw new ApiError(404, 'Quiz not found');
+  return quiz;
+}
+
+async function withOptionOrder(attempt, questions) {
+  ensureAttemptOptionOrder(attempt, questions);
+  if (attempt.isModified?.('optionOrder')) {
+    await attempt.save();
+  }
+  return attempt;
+}
+
+function findAttemptQuery(quizId, role, participantId) {
+  return {
+    quiz: quizId,
+    participantRole: role,
+    participantId,
+  };
+}
+
+function buildResult(quiz, attempt) {
+  const tier = resultTier(attempt.percentage);
+  const questionById = new Map(quiz.questions.map((question) => [String(question._id), question]));
+  const orderByQuestion = optionOrderMap(attempt);
+
+  const base = {
+    quizId: quiz._id,
+    title: quiz.title,
+    subject: quiz.subject,
+    scoredMarks: attempt.scoredMarks,
+    totalMarks: attempt.totalMarks,
+    percentage: attempt.percentage,
+    correctCount: attempt.correctCount,
+    partialCount: attempt.partialCount,
+    wrongCount: attempt.wrongCount,
+    unansweredCount: attempt.unansweredCount,
+    questionCount: quiz.questions.length,
+    timeTakenSeconds: attempt.timeTakenSeconds,
+    autoSubmitted: attempt.autoSubmitted,
+    submittedAt: attempt.submittedAt,
+    emoji: tier.emoji,
+    tierLabel: tier.label,
+    tierMessage: tier.message,
+    showAnswers: quiz.showAnswersAfterSubmit,
+  };
+
+  if (!quiz.showAnswersAfterSubmit) return base;
+
+  return {
+    ...base,
+    review: attempt.responses.map((response, index) => {
+      const question = questionById.get(String(response.question));
+      return {
+        number: index + 1,
+        text: question?.text || '',
+        type: question?.type || 'single',
+        marks: question?.marks || 0,
+        options: toShuffledOptions(question, orderByQuestion),
+        rows: [],
+        selectedOptions: response.selectedOptions,
+        correctOptions: response.correctOptions,
+        textAnswer: '',
+        correctAnswers: [],
+        matrixAnswers: [],
+        correctMatrix: [],
+        outcome: response.outcome,
+        awardedMarks: response.awardedMarks,
+        explanation: question?.explanation || '',
+      };
+    }),
+  };
+}
+
+/** Shared quiz attempt handlers for student / educator / parent. */
+export function createQuizParticipantHandlers(role) {
+  return {
+    list: async (participantId) => {
+      const quizzes = await Quiz.find({ isPublished: true }).sort({ createdAt: -1 });
+
+      const attempts = await QuizAttempt.find({
+        participantRole: role,
+        participantId,
+        quiz: { $in: quizzes.map((doc) => doc._id) },
+      });
+      const attemptByQuiz = new Map(attempts.map((attempt) => [String(attempt.quiz), attempt]));
+
+      return {
+        quizzes: quizzes.map((doc) => toQuizSummaryJson(doc, attemptByQuiz.get(String(doc._id)))),
+      };
+    },
+
+    get: async (quizId, participantId) => {
+      const quiz = await loadPublishedQuiz(quizId);
+      let attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
+
+      if (attempt && attempt.status === 'in_progress' && remainingSeconds(attempt) === 0) {
+        attempt = await finaliseExpiredAttempt(attempt, quiz);
+      }
+
+      return { quiz: toQuizSummaryJson(quiz, attempt) };
+    },
+
+    start: async (quizId, participantId) => {
+      const quiz = await loadPublishedQuiz(quizId);
+
+      if (quiz.questions.length === 0) {
+        throw new ApiError(400, 'This quiz has no questions yet');
+      }
+
+      let attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
+
+      if (attempt && attempt.status === 'in_progress' && remainingSeconds(attempt) === 0) {
+        attempt = await finaliseExpiredAttempt(attempt, quiz);
+      }
+
+      if (attempt?.status === 'submitted') {
+        throw new ApiError(409, 'You have already submitted this quiz');
+      }
+
+      if (!attempt) {
+        assertExamOpen(quiz.endDate, 'quiz');
+        const startedAt = new Date();
+        try {
+          attempt = await QuizAttempt.create({
+            quiz: quiz._id,
+            participantRole: role,
+            participantId,
+            student: role === 'student' ? participantId : null,
+            startedAt,
+            expiresAt: new Date(startedAt.getTime() + quiz.durationMinutes * 60 * 1000),
+            totalMarks: quiz.totalMarks,
+            optionOrder: buildOptionOrder(quiz.questions),
+          });
+        } catch (err) {
+          if (err?.code !== 11000) throw err;
+          attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
+        }
+      }
+
+      attempt = await withOptionOrder(attempt, quiz.questions);
+      const orderByQuestion = optionOrderMap(attempt);
+
+      return {
+        attempt: {
+          id: attempt._id,
+          startedAt: attempt.startedAt,
+          expiresAt: attempt.expiresAt,
+          remainingSeconds: remainingSeconds(attempt),
+        },
+        quiz: {
+          ...toQuizSummaryJson(quiz, attempt),
+          questions: quiz.questions.map((question, index) =>
+            toAttemptQuestionJson(question, index, orderByQuestion)
+          ),
+        },
+      };
+    },
+
+    submit: async (quizId, participantId, body = {}) => {
+      const quiz = await loadPublishedQuiz(quizId);
+      const attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
+
+      if (!attempt) throw new ApiError(400, 'Start the quiz before submitting');
+      if (attempt.status === 'submitted') {
+        throw new ApiError(409, 'You have already submitted this quiz');
+      }
+
+      const { answers } = body;
+      if (answers !== undefined && !Array.isArray(answers)) {
+        throw new ApiError(400, 'Answers must be a list');
+      }
+
+      const graded = gradeAttempt({
+        questions: quiz.questions,
+        answers: answers || [],
+        negativeMarkPerWrong: quiz.negativeMarkPerWrong,
+        allowPartialCredit: quiz.allowPartialCredit,
+      });
+
+      const submittedAt = new Date();
+      Object.assign(attempt, graded, {
+        status: 'submitted',
+        submittedAt,
+        autoSubmitted: Boolean(body.autoSubmitted) || remainingSeconds(attempt) === 0,
+        timeTakenSeconds: Math.max(
+          0,
+          Math.floor((submittedAt.getTime() - new Date(attempt.startedAt).getTime()) / 1000)
+        ),
+      });
+
+      await attempt.save();
+
+      if (!quiz.resultsReleased) {
+        return {
+          resultsHeld: true,
+          submittedAt: attempt.submittedAt,
+          quiz: {
+            id: quiz._id,
+            title: quiz.title,
+            subject: quiz.subject,
+            resultsReleased: false,
+          },
+          message: 'Quiz submitted. Results will be available after the academy releases them.',
+        };
+      }
+
+      return {
+        resultsHeld: false,
+        result: buildResult(quiz, attempt),
+        message: 'Quiz submitted',
+      };
+    },
+
+    result: async (quizId, participantId) => {
+      const quiz = await loadPublishedQuiz(quizId);
+      let attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
+
+      if (attempt && attempt.status === 'in_progress' && remainingSeconds(attempt) === 0) {
+        attempt = await finaliseExpiredAttempt(attempt, quiz);
+      }
+      if (!attempt || attempt.status !== 'submitted') {
+        throw new ApiError(404, 'No submitted attempt for this quiz yet');
+      }
+
+      if (!quiz.resultsReleased) {
+        return {
+          resultsHeld: true,
+          submittedAt: attempt.submittedAt,
+          quiz: {
+            id: quiz._id,
+            title: quiz.title,
+            subject: quiz.subject,
+            resultsReleased: false,
+          },
+        };
+      }
+
+      return { result: buildResult(quiz, attempt), resultsHeld: false };
+    },
+  };
+}

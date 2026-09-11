@@ -146,6 +146,10 @@ const slipTestSchema = new mongoose.Schema(
       maxlength: [160, 'Topic cannot exceed 160 characters'],
       default: '',
     },
+    endDate: {
+      type: Date,
+      default: null,
+    },
     durationMinutes: {
       type: Number,
       required: [true, 'Duration is required'],

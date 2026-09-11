@@ -133,6 +133,10 @@ const assessmentSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Assessment date is required'],
     },
+    endDate: {
+      type: Date,
+      default: null,
+    },
     durationMinutes: {
       type: Number,
       required: [true, 'Duration is required'],

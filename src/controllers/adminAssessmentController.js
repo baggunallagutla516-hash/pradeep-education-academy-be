@@ -7,6 +7,7 @@ import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/q
 import { ASSESSMENT_QUESTION_TYPES } from '../models/Assessment.js';
 import { env } from '../config/env.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
+import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
 
 function toQuestionJson(question) {
   return {
@@ -74,6 +75,7 @@ function toAssessmentJson(doc, extra = {}) {
     studentClassName: classFields.studentClassName,
     subject: doc.subject,
     assessmentDate: doc.assessmentDate,
+    endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -160,7 +162,7 @@ export const getAssessment = asyncHandler(async (req, res) => {
 });
 
 export const createAssessment = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, assessmentDate, questions, sections } =
+  const { title, description, studentClass, subject, assessmentDate, endDate, questions, sections } =
     req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
@@ -169,13 +171,17 @@ export const createAssessment = asyncHandler(async (req, res) => {
 
   const normalisedSections = normaliseSections(sections, questions);
   const normalised = normaliseAssessmentQuestions(questions, normalisedSections);
+  const heldOn = readAssessmentDate(assessmentDate);
+  const ends = readEndDate(endDate);
+  assertEndDateNotBefore(ends, heldOn, 'assessment date');
 
   const assessment = await Assessment.create({
     title: title.trim(),
     description: (description || '').trim(),
     studentClass,
     subject: (subject || '').trim(),
-    assessmentDate: readAssessmentDate(assessmentDate),
+    assessmentDate: heldOn,
+    endDate: ends,
     durationMinutes: readDuration(req.body.durationMinutes),
     negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
     allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
@@ -204,7 +210,7 @@ export const updateAssessment = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Published assessments cannot be edited');
   }
 
-  const { title, description, studentClass, subject, assessmentDate, questions, sections } =
+  const { title, description, studentClass, subject, assessmentDate, endDate, questions, sections } =
     req.body;
 
   if (title !== undefined) {
@@ -219,6 +225,12 @@ export const updateAssessment = asyncHandler(async (req, res) => {
   }
   if (assessmentDate !== undefined) {
     assessment.assessmentDate = readAssessmentDate(assessmentDate);
+  }
+  if (endDate !== undefined) {
+    assessment.endDate = readEndDate(endDate);
+  }
+  if (assessment.endDate) {
+    assertEndDateNotBefore(assessment.endDate, assessment.assessmentDate, 'assessment date');
   }
   if (req.body.durationMinutes !== undefined) {
     assessment.durationMinutes = readDuration(req.body.durationMinutes);

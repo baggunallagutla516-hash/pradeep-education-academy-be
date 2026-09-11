@@ -76,6 +76,15 @@ import {
   updateDpp,
 } from '../controllers/adminDppController.js';
 import {
+  createQuiz,
+  deleteQuiz,
+  getQuiz,
+  listQuizResults,
+  listQuizzes,
+  releaseQuizResults,
+  updateQuiz,
+} from '../controllers/adminQuizController.js';
+import {
   createSlipTest,
   deleteSlipTest,
   getSlipTest,
@@ -213,6 +222,14 @@ router.post('/dpps/:id/release-results', protectAdmin, releaseDppResults);
 router.post('/dpps', protectAdmin, createDpp);
 router.patch('/dpps/:id', protectAdmin, updateDpp);
 router.delete('/dpps/:id', protectAdmin, deleteDpp);
+
+router.get('/quizzes', protectAdmin, listQuizzes);
+router.get('/quizzes/:id', protectAdmin, getQuiz);
+router.get('/quizzes/:id/results', protectAdmin, listQuizResults);
+router.post('/quizzes/:id/release-results', protectAdmin, releaseQuizResults);
+router.post('/quizzes', protectAdmin, createQuiz);
+router.patch('/quizzes/:id', protectAdmin, updateQuiz);
+router.delete('/quizzes/:id', protectAdmin, deleteQuiz);
 
 router.get('/slip-tests', protectAdmin, listSlipTests);
 router.get('/slip-tests/:id', protectAdmin, getSlipTest);

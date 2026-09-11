@@ -138,6 +138,10 @@ const dppSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Practice date is required'],
     },
+    endDate: {
+      type: Date,
+      default: null,
+    },
     durationMinutes: {
       type: Number,
       required: [true, 'Duration is required'],

@@ -14,6 +14,7 @@ import unitTestRoutes from "./routes/unitTestRoutes.js";
 import cetRoutes from "./routes/cetRoutes.js";
 import assessmentRoutes from "./routes/assessmentRoutes.js";
 import dppRoutes from "./routes/dppRoutes.js";
+import quizRoutes from "./routes/quizRoutes.js";
 import slipTestRoutes from "./routes/slipTestRoutes.js";
 import parentRoutes from "./routes/parentRoutes.js";
 import educatorRoutes from "./routes/educatorRoutes.js";
@@ -77,6 +78,7 @@ export function createApp() {
   app.use("/api/cets", cetRoutes);
   app.use("/api/assessments", assessmentRoutes);
   app.use("/api/dpps", dppRoutes);
+  app.use("/api/quizzes", quizRoutes);
   app.use("/api/slip-tests", slipTestRoutes);
 
   app.use(notFound);

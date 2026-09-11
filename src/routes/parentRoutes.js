@@ -12,6 +12,13 @@ import {
   updateParentMe,
   verifyParentResetOtp,
 } from '../controllers/parentAuthController.js';
+import {
+  getParentQuiz,
+  getParentQuizResult,
+  listParentQuizzes,
+  startParentQuiz,
+  submitParentQuiz,
+} from '../controllers/parentQuizController.js';
 import { protectParent } from '../middleware/parentAuth.js';
 
 const authLimiter = rateLimit({
@@ -49,5 +56,11 @@ router.patch('/me', protectParent, updateParentMe);
 router.get('/children', protectParent, listChildren);
 router.get('/children/:studentId/results', protectParent, getChildResults);
 router.get('/children/:studentId', protectParent, getChild);
+
+router.get('/quizzes', protectParent, listParentQuizzes);
+router.get('/quizzes/:id', protectParent, getParentQuiz);
+router.post('/quizzes/:id/start', protectParent, startParentQuiz);
+router.post('/quizzes/:id/submit', protectParent, submitParentQuiz);
+router.get('/quizzes/:id/result', protectParent, getParentQuizResult);
 
 export default router;

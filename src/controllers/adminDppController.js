@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
+import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
 
 function toQuestionJson(question) {
   return {
@@ -32,6 +33,7 @@ function toDppJson(doc, extra = {}) {
     studentClassName: classFields.studentClassName,
     subject: doc.subject,
     practiceDate: doc.practiceDate,
+    endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -107,20 +109,24 @@ export const getDpp = asyncHandler(async (req, res) => {
 });
 
 export const createDpp = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, practiceDate, questions } = req.body;
+  const { title, description, studentClass, subject, practiceDate, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
   await assertActiveClassId(studentClass);
   assertValidQuestions(questions);
 
   const normalised = normaliseQuestions(questions);
+  const practice = readPracticeDate(practiceDate);
+  const ends = readEndDate(endDate);
+  assertEndDateNotBefore(ends, practice, 'practice date');
 
   const dpp = await Dpp.create({
     title: title.trim(),
     description: (description || '').trim(),
     studentClass,
     subject: (subject || '').trim(),
-    practiceDate: readPracticeDate(practiceDate),
+    practiceDate: practice,
+    endDate: ends,
     durationMinutes: readDuration(req.body.durationMinutes),
     negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
     allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
@@ -148,7 +154,7 @@ export const updateDpp = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Published DPPs cannot be edited');
   }
 
-  const { title, description, studentClass, subject, practiceDate, questions } = req.body;
+  const { title, description, studentClass, subject, practiceDate, endDate, questions } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -161,6 +167,10 @@ export const updateDpp = asyncHandler(async (req, res) => {
     dpp.studentClass = studentClass;
   }
   if (practiceDate !== undefined) dpp.practiceDate = readPracticeDate(practiceDate);
+  if (endDate !== undefined) dpp.endDate = readEndDate(endDate);
+  if (dpp.endDate) {
+    assertEndDateNotBefore(dpp.endDate, dpp.practiceDate, 'practice date');
+  }
   if (req.body.durationMinutes !== undefined) {
     dpp.durationMinutes = readDuration(req.body.durationMinutes);
   }

@@ -10,6 +10,7 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from '../utils/optionOrder.js';
+import { assertExamOpen, isExamClosed } from '../utils/examWindow.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -47,6 +48,8 @@ function toSlipTestSummaryJson(doc, attempt) {
     subject: doc.subject,
     chapter: doc.chapter,
     topic: doc.topic,
+    endDate: doc.endDate || null,
+    isClosed: isExamClosed(doc.endDate),
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -165,6 +168,7 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
   }
 
   if (!attempt) {
+    assertExamOpen(slipTest.endDate, 'slip test');
     const startedAt = new Date();
     try {
       attempt = await SlipTestAttempt.create({

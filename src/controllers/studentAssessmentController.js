@@ -10,6 +10,7 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from '../utils/optionOrder.js';
+import { assertExamOpen, isExamClosed } from '../utils/examWindow.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -59,6 +60,8 @@ function toAssessmentSummaryJson(doc, attempt) {
     studentClassName: classFields.studentClassName,
     subject: doc.subject,
     assessmentDate: doc.assessmentDate,
+    endDate: doc.endDate || null,
+    isClosed: isExamClosed(doc.endDate),
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -196,6 +199,7 @@ export const startStudentAssessment = asyncHandler(async (req, res) => {
   }
 
   if (!attempt) {
+    assertExamOpen(assessment.endDate, 'assessment');
     const startedAt = new Date();
     try {
       attempt = await AssessmentAttempt.create({
