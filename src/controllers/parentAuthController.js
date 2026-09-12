@@ -13,6 +13,7 @@ import {
 } from '../utils/parentAuthResponse.js';
 import { toPublicStudent } from '../utils/authResponse.js';
 import { assertActiveClassIds } from '../utils/schoolClass.js';
+import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
 
 const {
   forgotPassword: forgotParentPassword,
@@ -43,7 +44,7 @@ async function loadLinkedChild(parentId, studentId) {
 }
 
 function mapAttemptResult(attempt, assessment, kind) {
-  const released = Boolean(assessment?.resultsReleased);
+  const released = areAttemptResultsVisible(assessment, attempt);
   return {
     id: attempt._id,
     kind,

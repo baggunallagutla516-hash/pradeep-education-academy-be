@@ -156,6 +156,10 @@ const slipTestSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    startDate: {
+      type: Date,
+      default: null,
+    },
     durationMinutes: {
       type: Number,
       required: [true, 'Duration is required'],

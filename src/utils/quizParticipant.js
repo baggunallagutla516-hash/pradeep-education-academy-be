@@ -8,7 +8,8 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from './optionOrder.js';
-import { assertExamOpen, isExamClosed } from './examWindow.js';
+import { assertExamWindow, isExamClosed, isExamNotYetOpen } from './examWindow.js';
+import { areAttemptResultsVisible } from './resultsRelease.js';
 import {
   assertDocInAssignedClasses,
   buildAssignedClassFilter,
@@ -28,27 +29,29 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
   };
 }
 
-function toQuizSummaryJson(doc, attempt) {
+function toQuizSummaryJson(doc, attempt, viewerClassId = null) {
   const submitted = attempt?.status === 'submitted';
-  const resultsReleased = Boolean(doc.resultsReleased);
+  const resultsVisible = areAttemptResultsVisible(doc, attempt);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    ...contentClassJsonFields(doc),
+    ...contentClassJsonFields(doc, { viewerClassId }),
     subject: doc.subject,
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
+    isNotYetOpen: isExamNotYetOpen(doc.startDate),
+    startDate: doc.startDate || null,
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    resultsReleased,
+    resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
-    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
-    percentage: submitted && resultsReleased ? attempt.percentage : null,
+    scoredMarks: submitted && resultsVisible ? attempt.scoredMarks : null,
+    percentage: submitted && resultsVisible ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -206,7 +209,13 @@ export function createQuizParticipantHandlers(role) {
       const attemptByQuiz = new Map(attempts.map((attempt) => [String(attempt.quiz), attempt]));
 
       return {
-        quizzes: quizzes.map((doc) => toQuizSummaryJson(doc, attemptByQuiz.get(String(doc._id)))),
+        quizzes: quizzes.map((doc) =>
+          toQuizSummaryJson(
+            doc,
+            attemptByQuiz.get(String(doc._id)),
+            role === 'student' ? options.classId : null
+          )
+        ),
       };
     },
 
@@ -218,7 +227,9 @@ export function createQuizParticipantHandlers(role) {
         attempt = await finaliseExpiredAttempt(attempt, quiz);
       }
 
-      return { quiz: toQuizSummaryJson(quiz, attempt) };
+      return {
+        quiz: toQuizSummaryJson(quiz, attempt, role === 'student' ? options.classId : null),
+      };
     },
 
     start: async (quizId, participantId, options = {}) => {
@@ -239,7 +250,7 @@ export function createQuizParticipantHandlers(role) {
       }
 
       if (!attempt) {
-        assertExamOpen(quiz.endDate, 'quiz');
+        assertExamWindow(quiz.startDate, quiz.endDate, 'quiz');
         const startedAt = new Date();
         try {
           attempt = await QuizAttempt.create({
@@ -269,7 +280,7 @@ export function createQuizParticipantHandlers(role) {
           remainingSeconds: remainingSeconds(attempt),
         },
         quiz: {
-          ...toQuizSummaryJson(quiz, attempt),
+          ...toQuizSummaryJson(quiz, attempt, role === 'student' ? options.classId : null),
           questions: quiz.questions.map((question, index) =>
             toAttemptQuestionJson(question, index, orderByQuestion)
           ),
@@ -311,7 +322,7 @@ export function createQuizParticipantHandlers(role) {
 
       await attempt.save();
 
-      if (!quiz.resultsReleased) {
+      if (!areAttemptResultsVisible(quiz, attempt)) {
         return {
           resultsHeld: true,
           submittedAt: attempt.submittedAt,
@@ -343,7 +354,7 @@ export function createQuizParticipantHandlers(role) {
         throw new ApiError(404, 'No submitted attempt for this quiz yet');
       }
 
-      if (!quiz.resultsReleased) {
+      if (!areAttemptResultsVisible(quiz, attempt)) {
         return {
           resultsHeld: true,
           submittedAt: attempt.submittedAt,

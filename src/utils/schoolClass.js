@@ -248,8 +248,21 @@ export async function resolveContentClasses(body, { required = true } = {}) {
   };
 }
 
-export function contentClassJsonFields(doc) {
+export function contentClassJsonFields(doc, { viewerClassId = null } = {}) {
   const classes = toPublicClassList(doc);
+  const viewerId = viewerClassId ? String(viewerClassId) : null;
+
+  if (viewerId) {
+    const match = classes.find((item) => String(item.id) === viewerId);
+    if (match) {
+      return {
+        studentClass: match.id,
+        studentClassName: match.name,
+        studentClasses: [match],
+      };
+    }
+  }
+
   const classFields = classRefFields(doc.studentClass || classes[0] || null);
   return {
     studentClass: classFields.studentClass || classes[0]?.id || null,

@@ -10,7 +10,8 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from '../utils/optionOrder.js';
-import { assertExamOpen, isExamClosed } from '../utils/examWindow.js';
+import { assertExamWindow, isExamClosed, isExamNotYetOpen } from '../utils/examWindow.js';
+import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -47,24 +48,33 @@ function assessmentSections(doc) {
   return seen.length > 0 ? seen : ['Section A'];
 }
 
-function toAssessmentSummaryJson(doc, attempt) {
+function toAssessmentSummaryJson(doc, attempt, viewerClassId = null) {
   const classes = toPublicClassList(doc);
-  const classFields = classRefFields(doc.studentClass || classes[0] || null);
-  const resultsReleased = Boolean(doc.resultsReleased);
+  const viewerId = viewerClassId ? String(viewerClassId) : null;
+  const viewerClass = viewerId
+    ? classes.find((item) => String(item.id) === viewerId)
+    : null;
+  const classFields = classRefFields(
+    viewerClass || doc.studentClass || classes[0] || null
+  );
   const submitted = attempt?.status === 'submitted';
+  const resultsVisible = areAttemptResultsVisible(doc, attempt);
 
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
     studentClass: classFields.studentClass || classes[0]?.id || null,
-    studentClassName:
-      classes.map((item) => item.name).filter(Boolean).join(', ') || classFields.studentClassName,
-    studentClasses: classes,
+    studentClassName: viewerClass
+      ? viewerClass.name
+      : classes.map((item) => item.name).filter(Boolean).join(', ') ||
+        classFields.studentClassName,
+    studentClasses: viewerClass ? [viewerClass] : classes,
     subject: doc.subject,
     assessmentDate: doc.assessmentDate,
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
+    isNotYetOpen: isExamNotYetOpen(doc.assessmentDate),
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
@@ -72,11 +82,11 @@ function toAssessmentSummaryJson(doc, attempt) {
     sections: assessmentSections(doc),
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
-    resultsReleased,
+    resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
-    percentage: submitted && resultsReleased ? attempt.percentage : null,
+    scoredMarks: submitted && resultsVisible ? attempt.scoredMarks : null,
+    percentage: submitted && resultsVisible ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -164,7 +174,7 @@ export const listStudentAssessments = asyncHandler(async (req, res) => {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
       assessments: assessments.map((doc) =>
-        toAssessmentSummaryJson(doc, attemptById.get(String(doc._id)))
+        toAssessmentSummaryJson(doc, attemptById.get(String(doc._id)), studentClassId(req.user))
       ),
     },
   });
@@ -183,7 +193,7 @@ export const getStudentAssessment = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: { assessment: toAssessmentSummaryJson(assessment, attempt) },
+    data: { assessment: toAssessmentSummaryJson(assessment, attempt, studentClassId(req.user)) },
   });
 });
 
@@ -208,7 +218,7 @@ export const startStudentAssessment = asyncHandler(async (req, res) => {
   }
 
   if (!attempt) {
-    assertExamOpen(assessment.endDate, 'assessment');
+    assertExamWindow(assessment.assessmentDate, assessment.endDate, 'assessment');
     const startedAt = new Date();
     try {
       attempt = await AssessmentAttempt.create({
@@ -238,7 +248,7 @@ export const startStudentAssessment = asyncHandler(async (req, res) => {
     data: {
       attempt: attemptPayload(attempt, assessment),
       assessment: {
-        ...toAssessmentSummaryJson(assessment, attempt),
+        ...toAssessmentSummaryJson(assessment, attempt, studentClassId(req.user)),
         questions: assessment.questions.map((question, index) =>
           toAttemptQuestionJson(question, index, orderByQuestion)
         ),
@@ -324,7 +334,7 @@ export const submitStudentAssessment = asyncHandler(async (req, res) => {
 
   await attempt.save();
 
-  if (!assessment.resultsReleased) {
+  if (!areAttemptResultsVisible(assessment, attempt)) {
     res.status(200).json({
       success: true,
       message: 'Assessment submitted. Results will appear after the academy releases them.',
@@ -362,7 +372,7 @@ export const getStudentAssessmentResult = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No submitted attempt for this assessment yet');
   }
 
-  if (!assessment.resultsReleased) {
+  if (!areAttemptResultsVisible(assessment, attempt)) {
     res.status(200).json({
       success: true,
       data: {

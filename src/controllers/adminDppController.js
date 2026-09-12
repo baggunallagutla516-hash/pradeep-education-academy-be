@@ -7,6 +7,7 @@ import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolCl
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
+import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
 
 function toQuestionJson(question) {
   return {
@@ -266,6 +267,7 @@ export const listDppResults = asyncHandler(async (req, res) => {
   const averagePercentage = submitted
     ? Math.round((attempts.reduce((sum, a) => sum + a.percentage, 0) / submitted) * 100) / 100
     : 0;
+  const pendingReleaseCount = countPendingReleaseAttempts(dpp, attempts);
 
   res.status(200).json({
     success: true,
@@ -275,6 +277,7 @@ export const listDppResults = asyncHandler(async (req, res) => {
         submitted,
         averagePercentage,
         highestPercentage: submitted ? attempts[0].percentage : 0,
+        pendingReleaseCount,
       },
       results: attempts.map((attempt) => ({
         id: attempt._id,
@@ -308,12 +311,20 @@ export const releaseDppResults = asyncHandler(async (req, res) => {
     status: 'submitted',
   }).populate('student', 'fullName email isActive deletedAt');
 
-  const alreadyReleased = Boolean(dpp.resultsReleased);
-  if (!alreadyReleased) {
-    dpp.resultsReleased = true;
-    dpp.resultsReleasedAt = new Date();
-    await dpp.save();
+  const toNotify = pendingReleaseAttempts(dpp, attempts);
+  if (toNotify.length === 0) {
+    throw new ApiError(
+      400,
+      attempts.length === 0
+        ? 'No submitted attempts to announce yet.'
+        : 'All submitted results are already announced. The button unlocks when a new attempt is submitted.'
+    );
   }
+
+  const wasReleased = Boolean(dpp.resultsReleased);
+  dpp.resultsReleased = true;
+  dpp.resultsReleasedAt = new Date();
+  await dpp.save();
 
   const clientOrigin = env.clientOrigins[0] || '';
   const resultUrl = clientOrigin
@@ -324,7 +335,7 @@ export const releaseDppResults = asyncHandler(async (req, res) => {
   let skipped = 0;
   let failed = 0;
 
-  for (const attempt of attempts) {
+  for (const attempt of toNotify) {
     const student = attempt.student;
     if (!student?.email || student.deletedAt || student.isActive === false) {
       skipped += 1;
@@ -348,16 +359,19 @@ export const releaseDppResults = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: alreadyReleased
-      ? 'Results were already released. Notification emails were sent again.'
+    message: wasReleased
+      ? 'New results announced for late submissions. Students can now view those scores.'
       : 'Results released. Students can now view scores on the site.',
     data: {
       dpp: toDppJson(dpp),
       notify: {
-        recipients: attempts.length,
+        recipients: toNotify.length,
         emailed,
         skipped,
         failed,
+      },
+      summary: {
+        pendingReleaseCount: 0,
       },
     },
   });

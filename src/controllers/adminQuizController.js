@@ -9,7 +9,8 @@ import { env } from '../config/env.js';
 import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
-import { readEndDate } from '../utils/examWindow.js';
+import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
+import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
 
 const ROLE_LABEL = {
   student: 'Student',
@@ -86,6 +87,7 @@ function toQuizJson(doc, extra = {}) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     subject: doc.subject,
+    startDate: doc.startDate || null,
     endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
@@ -174,13 +176,16 @@ export const getQuiz = asyncHandler(async (req, res) => {
 });
 
 export const createQuiz = asyncHandler(async (req, res) => {
-  const { title, description, subject, endDate, questions } = req.body;
+  const { title, description, subject, startDate, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
   const { studentClasses, studentClass } = await resolveContentClasses(req.body);
   assertValidQuestions(questions);
 
   const normalised = normaliseQuizQuestions(questions);
+  const starts = readStartDate(startDate, { label: 'starting date and time' });
+  const ends = readEndDate(endDate);
+  assertEndDateNotBefore(ends, starts, 'starting date and time');
 
   const quiz = await Quiz.create({
     title: title.trim(),
@@ -188,7 +193,8 @@ export const createQuiz = asyncHandler(async (req, res) => {
     studentClass,
     studentClasses,
     subject: (subject || '').trim(),
-    endDate: readEndDate(endDate),
+    startDate: starts,
+    endDate: ends,
     durationMinutes: readDuration(req.body.durationMinutes),
     negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
     allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
@@ -216,7 +222,7 @@ export const updateQuiz = asyncHandler(async (req, res) => {
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
   const wasPublished = Boolean(quiz.isPublished);
-  const { title, description, subject, endDate, questions } = req.body;
+  const { title, description, subject, startDate, endDate, questions } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -229,7 +235,11 @@ export const updateQuiz = asyncHandler(async (req, res) => {
     quiz.studentClasses = studentClasses;
     quiz.studentClass = studentClass;
   }
+  if (startDate !== undefined) {
+    quiz.startDate = readStartDate(startDate, { label: 'starting date and time' });
+  }
   if (endDate !== undefined) quiz.endDate = readEndDate(endDate);
+  assertEndDateNotBefore(quiz.endDate, quiz.startDate, 'starting date and time');
   if (req.body.durationMinutes !== undefined) {
     quiz.durationMinutes = readDuration(req.body.durationMinutes);
   }
@@ -323,6 +333,7 @@ export const listQuizResults = asyncHandler(async (req, res) => {
   const averagePercentage = submitted
     ? Math.round((attempts.reduce((sum, a) => sum + a.percentage, 0) / submitted) * 100) / 100
     : 0;
+  const pendingReleaseCount = countPendingReleaseAttempts(quiz, attempts);
 
   res.status(200).json({
     success: true,
@@ -332,6 +343,7 @@ export const listQuizResults = asyncHandler(async (req, res) => {
         submitted,
         averagePercentage,
         highestPercentage: submitted ? attempts[0].percentage : 0,
+        pendingReleaseCount,
       },
       results: attempts.map((attempt) => {
         const role = attempt.participantRole || 'student';
@@ -370,14 +382,22 @@ export const releaseQuizResults = asyncHandler(async (req, res) => {
     quiz: quiz._id,
     status: 'submitted',
   });
-  const participants = await loadParticipantsByRole(attempts);
-
-  const alreadyReleased = Boolean(quiz.resultsReleased);
-  if (!alreadyReleased) {
-    quiz.resultsReleased = true;
-    quiz.resultsReleasedAt = new Date();
-    await quiz.save();
+  const toNotify = pendingReleaseAttempts(quiz, attempts);
+  if (toNotify.length === 0) {
+    throw new ApiError(
+      400,
+      attempts.length === 0
+        ? 'No submitted attempts to announce yet.'
+        : 'All submitted results are already announced. The button unlocks when a new attempt is submitted.'
+    );
   }
+
+  const participants = await loadParticipantsByRole(toNotify);
+
+  const wasReleased = Boolean(quiz.resultsReleased);
+  quiz.resultsReleased = true;
+  quiz.resultsReleasedAt = new Date();
+  await quiz.save();
 
   const clientOrigin = env.clientOrigins[0] || '';
 
@@ -385,7 +405,7 @@ export const releaseQuizResults = asyncHandler(async (req, res) => {
   let skipped = 0;
   let failed = 0;
 
-  for (const attempt of attempts) {
+  for (const attempt of toNotify) {
     const role = attempt.participantRole || 'student';
     const person = participants.get(participantKey(attempt));
     if (!person?.email || person.deletedAt || person.isActive === false) {
@@ -410,16 +430,19 @@ export const releaseQuizResults = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: alreadyReleased
-      ? 'Results were already released. Notification emails were sent again.'
+    message: wasReleased
+      ? 'New results announced for late submissions. Participants can now view those scores.'
       : 'Results released. Participants can now view scores on the site.',
     data: {
       quiz: toQuizJson(quiz),
       notify: {
-        recipients: attempts.length,
+        recipients: toNotify.length,
         emailed,
         skipped,
         failed,
+      },
+      summary: {
+        pendingReleaseCount: 0,
       },
     },
   });

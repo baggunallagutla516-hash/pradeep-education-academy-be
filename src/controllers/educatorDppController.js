@@ -17,7 +17,8 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from '../utils/optionOrder.js';
-import { assertExamOpen, isExamClosed } from '../utils/examWindow.js';
+import { assertExamWindow, isExamClosed, isExamNotYetOpen } from '../utils/examWindow.js';
+import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
 
 const EDUCATOR_ROLE = 'educator';
 
@@ -50,7 +51,7 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 
 function toDppSummaryJson(doc, attempt) {
   const submitted = attempt?.status === 'submitted';
-  const resultsReleased = Boolean(doc.resultsReleased);
+  const resultsVisible = areAttemptResultsVisible(doc, attempt);
   return {
     id: doc._id,
     title: doc.title,
@@ -60,16 +61,17 @@ function toDppSummaryJson(doc, attempt) {
     practiceDate: doc.practiceDate,
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
+    isNotYetOpen: isExamNotYetOpen(doc.practiceDate),
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    resultsReleased,
+    resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
-    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
-    percentage: submitted && resultsReleased ? attempt.percentage : null,
+    scoredMarks: submitted && resultsVisible ? attempt.scoredMarks : null,
+    percentage: submitted && resultsVisible ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -241,7 +243,7 @@ export const startEducatorDpp = asyncHandler(async (req, res) => {
   }
 
   if (!attempt) {
-    assertExamOpen(dpp.endDate, 'DPP');
+    assertExamWindow(dpp.practiceDate, dpp.endDate, 'DPP');
     const startedAt = new Date();
     try {
       attempt = await DppAttempt.create({
@@ -318,7 +320,7 @@ export const submitEducatorDpp = asyncHandler(async (req, res) => {
 
   await attempt.save();
 
-  if (!dpp.resultsReleased) {
+  if (!areAttemptResultsVisible(dpp, attempt)) {
     res.status(200).json({
       success: true,
       message: 'DPP submitted. Results will be available after the academy releases them.',
@@ -355,7 +357,7 @@ export const getEducatorDppResult = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No submitted attempt for this DPP yet');
   }
 
-  if (!dpp.resultsReleased) {
+  if (!areAttemptResultsVisible(dpp, attempt)) {
     res.status(200).json({
       success: true,
       data: {

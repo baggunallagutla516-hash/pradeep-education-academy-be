@@ -14,7 +14,8 @@ import {
   optionOrderMap,
   toShuffledOptions,
 } from '../utils/optionOrder.js';
-import { assertExamOpen, isExamClosed } from '../utils/examWindow.js';
+import { assertExamWindow, isExamClosed, isExamNotYetOpen } from '../utils/examWindow.js';
+import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -39,29 +40,31 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
   };
 }
 
-function toSlipTestSummaryJson(doc, attempt) {
+function toSlipTestSummaryJson(doc, attempt, viewerClassId = null) {
   const submitted = attempt?.status === 'submitted';
-  const resultsReleased = Boolean(doc.resultsReleased);
+  const resultsVisible = areAttemptResultsVisible(doc, attempt);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    ...contentClassJsonFields(doc),
+    ...contentClassJsonFields(doc, { viewerClassId }),
     subject: doc.subject,
     chapter: doc.chapter,
     topic: doc.topic,
+    startDate: doc.startDate || null,
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
+    isNotYetOpen: isExamNotYetOpen(doc.startDate),
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
     questionCount: doc.questions.length,
     totalMarks: doc.totalMarks,
     attemptStatus: attempt ? attempt.status : 'not_started',
-    resultsReleased,
+    resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
-    scoredMarks: submitted && resultsReleased ? attempt.scoredMarks : null,
-    percentage: submitted && resultsReleased ? attempt.percentage : null,
+    scoredMarks: submitted && resultsVisible ? attempt.scoredMarks : null,
+    percentage: submitted && resultsVisible ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
   };
 }
@@ -139,7 +142,9 @@ export const listStudentSlipTests = asyncHandler(async (req, res) => {
     data: {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
-      slipTests: slipTests.map((doc) => toSlipTestSummaryJson(doc, attemptByTest.get(String(doc._id)))),
+      slipTests: slipTests.map((doc) =>
+        toSlipTestSummaryJson(doc, attemptByTest.get(String(doc._id)), classId)
+      ),
     },
   });
 });
@@ -154,7 +159,7 @@ export const getStudentSlipTest = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    data: { slipTest: toSlipTestSummaryJson(slipTest, attempt) },
+    data: { slipTest: toSlipTestSummaryJson(slipTest, attempt, studentClassId(req.user)) },
   });
 });
 
@@ -176,7 +181,7 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
   }
 
   if (!attempt) {
-    assertExamOpen(slipTest.endDate, 'slip test');
+    assertExamWindow(slipTest.startDate, slipTest.endDate, 'slip test');
     const startedAt = new Date();
     try {
       attempt = await SlipTestAttempt.create({
@@ -208,7 +213,7 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
         remainingSeconds: remainingSeconds(attempt),
       },
       slipTest: {
-        ...toSlipTestSummaryJson(slipTest, attempt),
+        ...toSlipTestSummaryJson(slipTest, attempt, studentClassId(req.user)),
         questions: slipTest.questions.map((question, index) =>
           toAttemptQuestionJson(question, index, orderByQuestion)
         ),
@@ -251,7 +256,7 @@ export const submitStudentSlipTest = asyncHandler(async (req, res) => {
 
   await attempt.save();
 
-  if (!slipTest.resultsReleased) {
+  if (!areAttemptResultsVisible(slipTest, attempt)) {
     res.status(200).json({
       success: true,
       message: 'Slip test submitted. Results will be available after the academy releases them.',
@@ -288,7 +293,7 @@ export const getStudentSlipTestResult = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No submitted attempt for this slip test yet');
   }
 
-  if (!slipTest.resultsReleased) {
+  if (!areAttemptResultsVisible(slipTest, attempt)) {
     res.status(200).json({
       success: true,
       data: {
