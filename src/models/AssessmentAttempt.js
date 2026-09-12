@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
+import { participantSchemaFields } from '../utils/examParticipant.js';
 
-export const EXAM_PARTICIPANT_ROLES = ['student', 'educator'];
+export { EXAM_PARTICIPANT_ROLES } from '../utils/examParticipant.js';
 
 const assessmentResponseSchema = new mongoose.Schema(
   {
@@ -44,21 +45,7 @@ const assessmentAttemptSchema = new mongoose.Schema(
       ref: 'Assessment',
       required: true,
     },
-    participantRole: {
-      type: String,
-      enum: EXAM_PARTICIPANT_ROLES,
-      default: 'student',
-    },
-    participantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
-    /** @deprecated prefer participantId; kept for existing student attempts */
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Student',
-      default: null,
-    },
+    ...participantSchemaFields(),
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
@@ -128,10 +115,15 @@ const assessmentAttemptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-assessmentAttemptSchema.index({ assessment: 1, student: 1 }, { unique: true, sparse: true });
+// Partial, not sparse: `student: null` is still indexed by a sparse unique index,
+// so educator attempts (no student) would collide on the same assessment.
+assessmentAttemptSchema.index(
+  { assessment: 1, student: 1 },
+  { unique: true, partialFilterExpression: { student: { $type: 'objectId' } } }
+);
 assessmentAttemptSchema.index(
   { assessment: 1, participantRole: 1, participantId: 1 },
-  { unique: true, sparse: true }
+  { unique: true, partialFilterExpression: { participantId: { $type: 'objectId' } } }
 );
 assessmentAttemptSchema.index({ student: 1, status: 1 });
 assessmentAttemptSchema.index({ participantRole: 1, participantId: 1, status: 1 });

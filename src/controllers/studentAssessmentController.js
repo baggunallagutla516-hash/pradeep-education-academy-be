@@ -1,4 +1,5 @@
 import { Assessment, MAX_FULLSCREEN_EXITS } from '../models/Assessment.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { AssessmentAttempt } from '../models/AssessmentAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -223,7 +224,7 @@ export const startStudentAssessment = asyncHandler(async (req, res) => {
     try {
       attempt = await AssessmentAttempt.create({
         assessment: assessment._id,
-        student: req.user._id,
+        ...participantIdentity('student', req.user._id),
         studentClass: studentClassId(req.user),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + assessment.durationMinutes * 60 * 1000),

@@ -1,5 +1,6 @@
 import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -186,7 +187,7 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
     try {
       attempt = await SlipTestAttempt.create({
         slipTest: slipTest._id,
-        student: req.user._id,
+        ...participantIdentity('student', req.user._id),
         studentClass: studentClassId(req.user),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + slipTest.durationMinutes * 60 * 1000),

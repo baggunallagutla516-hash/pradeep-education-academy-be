@@ -1,8 +1,5 @@
 import { Quiz, QUIZ_QUESTION_TYPES } from '../models/Quiz.js';
 import { QuizAttempt } from '../models/QuizAttempt.js';
-import { Student } from '../models/Student.js';
-import { Educator } from '../models/Educator.js';
-import { Parent } from '../models/Parent.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
@@ -11,62 +8,12 @@ import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/q
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
-
-const ROLE_LABEL = {
-  student: 'Student',
-  educator: 'Educator',
-  parent: 'Parent',
-};
-
-async function loadParticipantsByRole(attempts) {
-  const idsByRole = {
-    student: new Set(),
-    educator: new Set(),
-    parent: new Set(),
-  };
-
-  attempts.forEach((attempt) => {
-    const role = attempt.participantRole || (attempt.student ? 'student' : null);
-    const id = attempt.participantId || attempt.student;
-    if (role && id && idsByRole[role]) idsByRole[role].add(String(id));
-  });
-
-  const [students, educators, parents] = await Promise.all([
-    idsByRole.student.size
-      ? Student.find({ _id: { $in: [...idsByRole.student] } }).select(
-          'fullName email rollNumber isActive deletedAt'
-        )
-      : [],
-    idsByRole.educator.size
-      ? Educator.find({ _id: { $in: [...idsByRole.educator] } }).select(
-          'fullName email isActive deletedAt'
-        )
-      : [],
-    idsByRole.parent.size
-      ? Parent.find({ _id: { $in: [...idsByRole.parent] } }).select('fullName email isActive')
-      : [],
-  ]);
-
-  const map = new Map();
-  students.forEach((doc) => map.set(`student:${doc._id}`, doc));
-  educators.forEach((doc) => map.set(`educator:${doc._id}`, doc));
-  parents.forEach((doc) => map.set(`parent:${doc._id}`, doc));
-  return map;
-}
-
-function participantKey(attempt) {
-  const role = attempt.participantRole || (attempt.student ? 'student' : 'student');
-  const id = attempt.participantId || attempt.student;
-  return `${role}:${id}`;
-}
-
-function resultUrlForRole(clientOrigin, quizId, role) {
-  if (!clientOrigin) return '';
-  const base = clientOrigin.replace(/\/$/, '');
-  if (role === 'educator') return `${base}/educator/quizzes/${quizId}/result`;
-  if (role === 'parent') return `${base}/parent/quizzes/${quizId}/result`;
-  return `${base}/quizzes/${quizId}/result`;
-}
+import {
+  loadParticipantsByRole,
+  participantKey,
+  participantResultFields,
+  resultUrlForRole,
+} from '../utils/examParticipant.js';
 
 function toQuestionJson(question) {
   return {
@@ -346,16 +293,10 @@ export const listQuizResults = asyncHandler(async (req, res) => {
         pendingReleaseCount,
       },
       results: attempts.map((attempt) => {
-        const role = attempt.participantRole || 'student';
         const person = participants.get(participantKey(attempt));
         return {
           id: attempt._id,
-          participantRole: role,
-          roleLabel: ROLE_LABEL[role] || role,
-          studentId: person?._id || attempt.participantId || null,
-          studentName: person?.fullName || `Deleted ${ROLE_LABEL[role] || 'user'}`,
-          studentEmail: person?.email || '',
-          rollNumber: person?.rollNumber || '',
+          ...participantResultFields(attempt, person),
           scoredMarks: attempt.scoredMarks,
           totalMarks: attempt.totalMarks,
           percentage: attempt.percentage,
@@ -418,7 +359,7 @@ export const releaseQuizResults = asyncHandler(async (req, res) => {
         to: person.email,
         studentName: person.fullName,
         title: quiz.title,
-        resultUrl: resultUrlForRole(clientOrigin, quiz._id, role),
+        resultUrl: resultUrlForRole(clientOrigin, 'quizzes', quiz._id, role),
       });
       if (outcome.sent) emailed += 1;
       else skipped += 1;

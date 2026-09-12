@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { participantSchemaFields } from '../utils/examParticipant.js';
 
 const dppResponseSchema = new mongoose.Schema(
   {
@@ -52,20 +53,7 @@ const dppAttemptSchema = new mongoose.Schema(
       ref: 'Dpp',
       required: true,
     },
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Student',
-      default: null,
-    },
-    participantRole: {
-      type: String,
-      enum: ['student', 'educator'],
-      default: 'student',
-    },
-    participantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
+    ...participantSchemaFields(),
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
@@ -129,10 +117,13 @@ const dppAttemptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-dppAttemptSchema.index({ dpp: 1, student: 1 }, { unique: true, sparse: true });
+dppAttemptSchema.index(
+  { dpp: 1, student: 1 },
+  { unique: true, partialFilterExpression: { student: { $type: 'objectId' } } }
+);
 dppAttemptSchema.index(
   { dpp: 1, participantRole: 1, participantId: 1 },
-  { unique: true, sparse: true }
+  { unique: true, partialFilterExpression: { participantId: { $type: 'objectId' } } }
 );
 dppAttemptSchema.index({ student: 1, status: 1 });
 dppAttemptSchema.index({ participantRole: 1, participantId: 1, status: 1 });

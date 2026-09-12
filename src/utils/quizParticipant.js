@@ -10,6 +10,7 @@ import {
 } from './optionOrder.js';
 import { assertExamWindow, isExamClosed, isExamNotYetOpen } from './examWindow.js';
 import { areAttemptResultsVisible } from './resultsRelease.js';
+import { participantIdentity } from './examParticipant.js';
 import {
   assertDocInAssignedClasses,
   buildAssignedClassFilter,
@@ -255,9 +256,7 @@ export function createQuizParticipantHandlers(role) {
         try {
           attempt = await QuizAttempt.create({
             quiz: quiz._id,
-            participantRole: role,
-            participantId,
-            student: role === 'student' ? participantId : null,
+            ...participantIdentity(role, participantId),
             startedAt,
             expiresAt: new Date(startedAt.getTime() + quiz.durationMinutes * 60 * 1000),
             totalMarks: quiz.totalMarks,

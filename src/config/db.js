@@ -52,6 +52,8 @@ export async function connectDB() {
   }
 
   console.log(`MongoDB connected: ${mongoose.connection.host}`);
+  const { syncExamAttemptIndexes } = await import('../utils/examAttemptIndexes.js');
+  await syncExamAttemptIndexes();
   return cached.conn;
 }
 

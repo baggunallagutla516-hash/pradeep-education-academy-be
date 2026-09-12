@@ -1,5 +1,6 @@
 import { Assessment, MAX_FULLSCREEN_EXITS } from '../models/Assessment.js';
 import { AssessmentAttempt } from '../models/AssessmentAttempt.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -138,7 +139,7 @@ async function loadPublishedAssessment(id, educator) {
 
 async function withOptionOrder(attempt, questions) {
   ensureAttemptOptionOrder(attempt, questions);
-  if (attempt.isModified?.('optionOrder')) {
+  if (attempt?.isModified?.('optionOrder')) {
     await attempt.save();
   }
   return attempt;
@@ -296,9 +297,7 @@ export const startEducatorAssessment = asyncHandler(async (req, res) => {
     try {
       attempt = await AssessmentAttempt.create({
         assessment: assessment._id,
-        participantRole: EDUCATOR_ROLE,
-        participantId: req.educator._id,
-        student: null,
+        ...participantIdentity(EDUCATOR_ROLE, req.educator._id),
         studentClass: examClassId(assessment),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + assessment.durationMinutes * 60 * 1000),
@@ -312,6 +311,10 @@ export const startEducatorAssessment = asyncHandler(async (req, res) => {
         findAttemptQuery(assessment._id, req.educator._id)
       );
     }
+  }
+
+  if (!attempt) {
+    throw new ApiError(409, 'Could not start this assessment. Please try again.');
   }
 
   attempt = await withOptionOrder(attempt, assessment.questions);

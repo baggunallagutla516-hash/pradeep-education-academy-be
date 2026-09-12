@@ -9,6 +9,12 @@ import { env } from '../config/env.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
 import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
+import {
+  loadParticipantsByRole,
+  participantKey,
+  participantResultFields,
+  resultUrlForRole,
+} from '../utils/examParticipant.js';
 
 function toQuestionJson(question) {
   return {
@@ -335,9 +341,8 @@ export const listAssessmentResults = asyncHandler(async (req, res) => {
   const attempts = await AssessmentAttempt.find({
     assessment: assessment._id,
     status: 'submitted',
-  })
-    .populate('student', 'fullName email rollNumber')
-    .sort({ percentage: -1, submittedAt: 1 });
+  }).sort({ percentage: -1, submittedAt: 1 });
+  const participants = await loadParticipantsByRole(attempts);
 
   const submitted = attempts.length;
   const averagePercentage = submitted
@@ -357,10 +362,7 @@ export const listAssessmentResults = asyncHandler(async (req, res) => {
       },
       results: attempts.map((attempt) => ({
         id: attempt._id,
-        studentId: attempt.student?._id || null,
-        studentName: attempt.student?.fullName || 'Deleted student',
-        studentEmail: attempt.student?.email || '',
-        rollNumber: attempt.student?.rollNumber || '',
+        ...participantResultFields(attempt, participants.get(participantKey(attempt))),
         scoredMarks: attempt.scoredMarks,
         totalMarks: attempt.totalMarks,
         percentage: attempt.percentage,
@@ -387,7 +389,7 @@ export const releaseAssessmentResults = asyncHandler(async (req, res) => {
   const attempts = await AssessmentAttempt.find({
     assessment: assessment._id,
     status: 'submitted',
-  }).populate('student', 'fullName email isActive deletedAt');
+  });
 
   const toNotify = pendingReleaseAttempts(assessment, attempts);
   if (toNotify.length === 0) {
@@ -404,42 +406,45 @@ export const releaseAssessmentResults = asyncHandler(async (req, res) => {
   assessment.resultsReleasedAt = new Date();
   await assessment.save();
 
+  const participants = await loadParticipantsByRole(toNotify);
   const clientOrigin = env.clientOrigins[0] || '';
-  const resultUrl = clientOrigin
-    ? `${clientOrigin.replace(/\/$/, '')}/assessments/${assessment._id}/result`
-    : '';
 
   let emailed = 0;
   let skipped = 0;
   let failed = 0;
 
   for (const attempt of toNotify) {
-    const student = attempt.student;
-    if (!student?.email || student.deletedAt || student.isActive === false) {
+    const person = participants.get(participantKey(attempt));
+    if (!person?.email || person.deletedAt || person.isActive === false) {
       skipped += 1;
       continue;
     }
 
     try {
       const outcome = await sendAssessmentResultsReleasedEmail({
-        to: student.email,
-        studentName: student.fullName,
+        to: person.email,
+        studentName: person.fullName,
         assessmentTitle: assessment.title,
-        resultUrl,
+        resultUrl: resultUrlForRole(
+          clientOrigin,
+          'assessments',
+          assessment._id,
+          attempt.participantRole
+        ),
       });
       if (outcome.sent) emailed += 1;
       else skipped += 1;
     } catch (err) {
       failed += 1;
-      console.error(`[mailer] Failed to email ${student.email}:`, err?.message || err);
+      console.error(`[mailer] Failed to email ${person.email}:`, err?.message || err);
     }
   }
 
   res.status(200).json({
     success: true,
     message: wasReleased
-      ? 'New results announced for late submissions. Students can now view those scores.'
-      : 'Results released. Students can now view scores on the site.',
+      ? 'New results announced for late submissions. Participants can now view those scores.'
+      : 'Results released. Participants can now view scores on the site.',
     data: {
       assessment: toAssessmentJson(assessment),
       notify: {

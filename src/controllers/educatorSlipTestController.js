@@ -1,5 +1,6 @@
 import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -116,7 +117,7 @@ async function loadPublishedSlipTest(id, educator) {
 
 async function withOptionOrder(attempt, questions) {
   ensureAttemptOptionOrder(attempt, questions);
-  if (attempt.isModified?.('optionOrder')) {
+  if (attempt?.isModified?.('optionOrder')) {
     await attempt.save();
   }
   return attempt;
@@ -255,9 +256,7 @@ export const startEducatorSlipTest = asyncHandler(async (req, res) => {
     try {
       attempt = await SlipTestAttempt.create({
         slipTest: slipTest._id,
-        participantRole: EDUCATOR_ROLE,
-        participantId: req.educator._id,
-        student: null,
+        ...participantIdentity(EDUCATOR_ROLE, req.educator._id),
         studentClass: examClassId(slipTest),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + slipTest.durationMinutes * 60 * 1000),
@@ -268,6 +267,10 @@ export const startEducatorSlipTest = asyncHandler(async (req, res) => {
       if (err?.code !== 11000) throw err;
       attempt = await SlipTestAttempt.findOne(findAttemptQuery(slipTest._id, req.educator._id));
     }
+  }
+
+  if (!attempt) {
+    throw new ApiError(409, 'Could not start this slip test. Please try again.');
   }
 
   attempt = await withOptionOrder(attempt, slipTest.questions);

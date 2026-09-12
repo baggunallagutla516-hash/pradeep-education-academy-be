@@ -1,5 +1,6 @@
 import { Dpp } from '../models/Dpp.js';
 import { DppAttempt } from '../models/DppAttempt.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -184,7 +185,7 @@ export const startStudentDpp = asyncHandler(async (req, res) => {
     try {
       attempt = await DppAttempt.create({
         dpp: dpp._id,
-        student: req.user._id,
+        ...participantIdentity('student', req.user._id),
         studentClass: studentClassId(req.user),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + dpp.durationMinutes * 60 * 1000),

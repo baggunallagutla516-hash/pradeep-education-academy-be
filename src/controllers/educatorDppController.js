@@ -1,5 +1,6 @@
 import { Dpp } from '../models/Dpp.js';
 import { DppAttempt } from '../models/DppAttempt.js';
+import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -114,7 +115,7 @@ async function loadPublishedDpp(id, educator) {
 
 async function withOptionOrder(attempt, questions) {
   ensureAttemptOptionOrder(attempt, questions);
-  if (attempt.isModified?.('optionOrder')) {
+  if (attempt?.isModified?.('optionOrder')) {
     await attempt.save();
   }
   return attempt;
@@ -248,9 +249,7 @@ export const startEducatorDpp = asyncHandler(async (req, res) => {
     try {
       attempt = await DppAttempt.create({
         dpp: dpp._id,
-        participantRole: EDUCATOR_ROLE,
-        participantId: req.educator._id,
-        student: null,
+        ...participantIdentity(EDUCATOR_ROLE, req.educator._id),
         studentClass: examClassId(dpp),
         startedAt,
         expiresAt: new Date(startedAt.getTime() + dpp.durationMinutes * 60 * 1000),
@@ -261,6 +260,10 @@ export const startEducatorDpp = asyncHandler(async (req, res) => {
       if (err?.code !== 11000) throw err;
       attempt = await DppAttempt.findOne(findAttemptQuery(dpp._id, req.educator._id));
     }
+  }
+
+  if (!attempt) {
+    throw new ApiError(409, 'Could not start this DPP. Please try again.');
   }
 
   attempt = await withOptionOrder(attempt, dpp.questions);

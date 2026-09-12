@@ -82,8 +82,8 @@ export async function sendContactNotification({ name, email, phone, subject, mes
 }
 
 /**
- * Notifies a student that assessment results are available on the site.
- * Does not include scores — students must log in to view results.
+ * Notifies a participant that exam results are available on the site.
+ * Does not include scores — they must log in to view results.
  */
 export async function sendAssessmentResultsReleasedEmail({
   to,
@@ -101,14 +101,14 @@ export async function sendAssessmentResultsReleasedEmail({
     return { sent: false, skipped: true };
   }
 
-  const safeName = studentName || 'Student';
+  const safeName = studentName || 'there';
   const safeTitle = title || assessmentTitle || 'Assessment';
   const text = [
     `Hello ${safeName},`,
     '',
     `Results for "${safeTitle}" have been released.`,
     '',
-    'Please log in to the student portal to view your result on the website.',
+    'Please log in to view your result on the website.',
     'Scores are not shared by email.',
     '',
     resultUrl ? `Open your result: ${resultUrl}` : '',
@@ -125,7 +125,7 @@ export async function sendAssessmentResultsReleasedEmail({
         Results for <strong>${escapeHtml(safeTitle)}</strong> have been released.
       </p>
       <p style="margin: 0 0 16px; color: #555;">
-        Please log in to the student portal to view your result on the website.
+        Please log in to view your result on the website.
         Scores are not shared by email.
       </p>
       ${

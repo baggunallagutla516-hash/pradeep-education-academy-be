@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
+import { EXAM_PARTICIPANT_ROLES, participantSchemaFields } from '../utils/examParticipant.js';
 
-export const QUIZ_PARTICIPANT_ROLES = ['student', 'educator', 'parent'];
+export const QUIZ_PARTICIPANT_ROLES = EXAM_PARTICIPANT_ROLES;
 
 const quizResponseSchema = new mongoose.Schema(
   {
@@ -54,21 +55,7 @@ const quizAttemptSchema = new mongoose.Schema(
       ref: 'Quiz',
       required: true,
     },
-    participantRole: {
-      type: String,
-      enum: QUIZ_PARTICIPANT_ROLES,
-      required: true,
-    },
-    participantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true,
-    },
-    /** @deprecated kept for older student attempts; prefer participantId */
-    student: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Student',
-      default: null,
-    },
+    ...participantSchemaFields(),
     status: {
       type: String,
       enum: ['in_progress', 'submitted'],
