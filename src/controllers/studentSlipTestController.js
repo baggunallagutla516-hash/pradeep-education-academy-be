@@ -2,7 +2,11 @@ import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import {
+  classRefFields,
+  classVisibilityForStudent,
+  contentClassJsonFields,
+} from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
 import {
   buildOptionOrder,
@@ -36,15 +40,13 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 }
 
 function toSlipTestSummaryJson(doc, attempt) {
-  const classFields = classRefFields(doc.studentClass);
   const submitted = attempt?.status === 'submitted';
   const resultsReleased = Boolean(doc.resultsReleased);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     chapter: doc.chapter,
     topic: doc.topic,
@@ -95,8 +97,10 @@ async function loadPublishedSlipTest(req) {
   const slipTest = await SlipTest.findOne({
     _id: req.params.id,
     isPublished: true,
-    studentClass: studentClassId(req.user),
-  }).populate('studentClass', 'name');
+    ...classVisibilityForStudent(studentClassId(req.user)),
+  })
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
 
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
   return slipTest;
@@ -114,8 +118,12 @@ async function withOptionOrder(attempt, questions) {
 export const listStudentSlipTests = asyncHandler(async (req, res) => {
   const classId = studentClassId(req.user);
 
-  const slipTests = await SlipTest.find({ isPublished: true, studentClass: classId })
+  const slipTests = await SlipTest.find({
+    isPublished: true,
+    ...classVisibilityForStudent(classId),
+  })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ createdAt: -1 });
 
   const attempts = await SlipTestAttempt.find({

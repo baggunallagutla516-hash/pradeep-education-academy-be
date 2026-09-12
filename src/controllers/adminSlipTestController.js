@@ -3,7 +3,7 @@ import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
-import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { readEndDate } from '../utils/examWindow.js';
@@ -24,13 +24,11 @@ function toQuestionJson(question) {
 }
 
 function toSlipTestJson(doc, extra = {}) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     chapter: doc.chapter,
     topic: doc.topic,
@@ -77,10 +75,10 @@ function readDuration(value) {
 export const listSlipTests = asyncHandler(async (req, res) => {
   const slipTests = await SlipTest.find()
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ createdAt: -1 });
 
   const counts = await SlipTestAttempt.aggregate([
-    { $match: { status: 'submitted' } },
     { $group: { _id: '$slipTest', count: { $sum: 1 } } },
   ]);
   const countByTest = new Map(counts.map((row) => [String(row._id), row.count]));
@@ -96,7 +94,9 @@ export const listSlipTests = asyncHandler(async (req, res) => {
 });
 
 export const getSlipTest = asyncHandler(async (req, res) => {
-  const slipTest = await SlipTest.findById(req.params.id).populate('studentClass', 'name');
+  const slipTest = await SlipTest.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
   res.status(200).json({
@@ -106,11 +106,11 @@ export const getSlipTest = asyncHandler(async (req, res) => {
 });
 
 export const createSlipTest = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, chapter, topic, endDate, questions } = req.body;
+  const { title, description, subject, chapter, topic, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
   if (!chapter?.trim()) throw new ApiError(400, 'Chapter is required');
-  await assertActiveClassId(studentClass);
+  const { studentClasses, studentClass } = await resolveContentClasses(req.body);
   assertValidQuestions(questions);
 
   const normalised = normaliseQuestions(questions);
@@ -119,6 +119,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
     title: title.trim(),
     description: (description || '').trim(),
     studentClass,
+    studentClasses,
     subject: (subject || '').trim(),
     chapter: chapter.trim(),
     topic: (topic || '').trim(),
@@ -133,7 +134,10 @@ export const createSlipTest = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
-  await slipTest.populate('studentClass', 'name');
+  await slipTest.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(201).json({
     success: true,
@@ -146,11 +150,8 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
   const slipTest = await SlipTest.findById(req.params.id);
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
-  if (slipTest.isPublished) {
-    throw new ApiError(400, 'Published slip tests cannot be edited');
-  }
-
-  const { title, description, studentClass, subject, chapter, topic, endDate, questions } = req.body;
+  const wasPublished = Boolean(slipTest.isPublished);
+  const { title, description, subject, chapter, topic, endDate, questions } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -163,8 +164,9 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
     slipTest.chapter = chapter.trim();
   }
   if (topic !== undefined) slipTest.topic = topic.trim();
-  if (studentClass !== undefined) {
-    await assertActiveClassId(studentClass);
+  if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    slipTest.studentClasses = studentClasses;
     slipTest.studentClass = studentClass;
   }
   if (endDate !== undefined) slipTest.endDate = readEndDate(endDate);
@@ -190,12 +192,43 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
     slipTest.totalMarks = totalMarksFor(normalised);
   }
 
+  const willBePublished = Boolean(slipTest.isPublished);
+  const unpublishing = wasPublished && !willBePublished;
+  const editingPublished = wasPublished;
+  const needsWipe = unpublishing || editingPublished;
+
+  if (needsWipe) {
+    if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
+      throw new ApiError(
+        400,
+        'Saving or unpublishing a published slip test deletes all attempt data. Confirm to continue.'
+      );
+    }
+    await SlipTestAttempt.deleteMany({ slipTest: slipTest._id });
+    slipTest.resultsReleased = false;
+    slipTest.resultsReleasedAt = null;
+  }
+
+  if (willBePublished && !slipTest.publishedAt) {
+    slipTest.publishedAt = new Date();
+  }
+  if (!willBePublished) {
+    slipTest.publishedAt = null;
+  }
+
   await slipTest.save();
-  await slipTest.populate('studentClass', 'name');
+  await slipTest.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(200).json({
     success: true,
-    message: 'Slip test updated',
+    message: unpublishing
+      ? 'Slip test unpublished. All attempt data was deleted.'
+      : editingPublished
+        ? 'Slip test updated. Previous attempt data was deleted so corrected answers apply for everyone.'
+        : 'Slip test updated',
     data: { slipTest: toSlipTestDetailJson(slipTest) },
   });
 });
@@ -215,7 +248,9 @@ export const deleteSlipTest = asyncHandler(async (req, res) => {
 });
 
 export const listSlipTestResults = asyncHandler(async (req, res) => {
-  const slipTest = await SlipTest.findById(req.params.id).populate('studentClass', 'name');
+  const slipTest = await SlipTest.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
   const attempts = await SlipTestAttempt.find({ slipTest: slipTest._id, status: 'submitted' })
@@ -258,7 +293,9 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
 });
 
 export const releaseSlipTestResults = asyncHandler(async (req, res) => {
-  const slipTest = await SlipTest.findById(req.params.id).populate('studentClass', 'name');
+  const slipTest = await SlipTest.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
   const attempts = await SlipTestAttempt.find({

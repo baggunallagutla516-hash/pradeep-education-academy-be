@@ -126,8 +126,14 @@ const dppSchema = new mongoose.Schema(
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
-      required: [true, 'Class is required'],
+      default: null,
     },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     subject: {
       type: String,
       trim: true,
@@ -196,5 +202,6 @@ const dppSchema = new mongoose.Schema(
 );
 
 dppSchema.index({ studentClass: 1, isPublished: 1, practiceDate: -1 });
+dppSchema.index({ studentClasses: 1, isPublished: 1, practiceDate: -1 });
 
 export const Dpp = mongoose.model('Dpp', dppSchema);

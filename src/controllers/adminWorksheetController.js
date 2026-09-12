@@ -2,8 +2,7 @@ import fs from 'fs';
 import { Worksheet } from '../models/Worksheet.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { assertActiveClassId } from '../utils/schoolClass.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import {
   buildObjectKey,
   deleteObject,
@@ -12,13 +11,11 @@ import {
 } from '../utils/storage.js';
 
 function toWorksheetJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -73,6 +70,7 @@ async function uploadFile(file) {
 export const listWorksheets = asyncHandler(async (_req, res) => {
   const worksheets = await Worksheet.find()
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ publishedAt: -1, createdAt: -1 });
   res.status(200).json({
     success: true,
@@ -81,7 +79,9 @@ export const listWorksheets = asyncHandler(async (_req, res) => {
 });
 
 export const getWorksheet = asyncHandler(async (req, res) => {
-  const worksheet = await Worksheet.findById(req.params.id).populate('studentClass', 'name');
+  const worksheet = await Worksheet.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
   res.status(200).json({
     success: true,
@@ -90,14 +90,13 @@ export const getWorksheet = asyncHandler(async (req, res) => {
 });
 
 export const createWorksheet = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, isPublished } = req.body;
+  const { title, description, isPublished } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
   try {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
-    if (!studentClass?.trim()) throw new ApiError(400, 'Class is required');
-    await assertActiveClassId(studentClass);
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
 
     if (!cover) throw new ApiError(400, 'Cover image is required');
     if (!file) throw new ApiError(400, 'Worksheet file is required');
@@ -117,6 +116,7 @@ export const createWorksheet = asyncHandler(async (req, res) => {
       title: title.trim(),
       description: description?.trim() || '',
       studentClass,
+      studentClasses,
       coverImageUrl: coverUpload.url,
       coverImageKey: coverUpload.key,
       fileUrl: fileUpload.url,
@@ -129,7 +129,10 @@ export const createWorksheet = asyncHandler(async (req, res) => {
       createdBy: req.admin._id,
     });
 
-    await worksheet.populate('studentClass', 'name');
+    await worksheet.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(201).json({
       success: true,
@@ -147,7 +150,7 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
   const worksheet = await Worksheet.findById(req.params.id);
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
 
-  const { title, description, studentClass, isPublished } = req.body;
+  const { title, description, isPublished } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -159,8 +162,9 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
     if (description !== undefined) {
       worksheet.description = String(description).trim();
     }
-    if (studentClass !== undefined) {
-      await assertActiveClassId(studentClass);
+    if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+      const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+      worksheet.studentClasses = studentClasses;
       worksheet.studentClass = studentClass;
     }
 
@@ -195,7 +199,10 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
     }
 
     await worksheet.save();
-    await worksheet.populate('studentClass', 'name');
+    await worksheet.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(200).json({
       success: true,

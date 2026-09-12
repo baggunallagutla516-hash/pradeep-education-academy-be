@@ -72,6 +72,17 @@ const quizSchema = new mongoose.Schema(
       maxlength: [2000, 'Description cannot exceed 2000 characters'],
       default: '',
     },
+    studentClass: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'SchoolClass',
+      default: null,
+    },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     subject: {
       type: String,
       trim: true,
@@ -136,5 +147,7 @@ const quizSchema = new mongoose.Schema(
 );
 
 quizSchema.index({ isPublished: 1, createdAt: -1 });
+quizSchema.index({ studentClasses: 1, isPublished: 1, createdAt: -1 });
+quizSchema.index({ studentClass: 1, isPublished: 1, createdAt: -1 });
 
 export const Quiz = mongoose.model('Quiz', quizSchema);

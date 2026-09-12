@@ -121,8 +121,14 @@ const assessmentSchema = new mongoose.Schema(
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
-      required: [true, 'Class is required'],
+      default: null,
     },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     subject: {
       type: String,
       trim: true,
@@ -201,5 +207,6 @@ const assessmentSchema = new mongoose.Schema(
 );
 
 assessmentSchema.index({ studentClass: 1, isPublished: 1, assessmentDate: -1 });
+assessmentSchema.index({ studentClasses: 1, isPublished: 1, assessmentDate: -1 });
 
 export const Assessment = mongoose.model('Assessment', assessmentSchema);

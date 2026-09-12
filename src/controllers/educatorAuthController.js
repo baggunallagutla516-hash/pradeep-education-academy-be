@@ -8,6 +8,7 @@ import {
   sendEducatorAuthResponse,
   toPublicEducator,
 } from '../utils/educatorAuthResponse.js';
+import { assertActiveClassIds } from '../utils/schoolClass.js';
 
 const {
   forgotPassword: forgotEducatorPassword,
@@ -22,7 +23,7 @@ function normalizePhone(phone) {
 }
 
 export const registerEducator = asyncHandler(async (req, res) => {
-  const { fullName, email, phone, schoolName, password, confirmPassword } = req.body;
+  const { fullName, email, phone, schoolName, password, confirmPassword, classes } = req.body;
 
   if (!fullName || !email || !phone || !password || !confirmPassword) {
     throw new ApiError(400, 'Please fill in all required fields');
@@ -38,6 +39,8 @@ export const registerEducator = asyncHandler(async (req, res) => {
   if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
     throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
   }
+
+  const classIds = await assertActiveClassIds(classes);
 
   const existing = await Educator.findOne({
     deletedAt: null,
@@ -56,8 +59,11 @@ export const registerEducator = asyncHandler(async (req, res) => {
     email: normalizedEmail,
     phone: normalizedPhone,
     schoolName: schoolName?.trim() || '',
+    classes: classIds,
     password,
   });
+
+  await educator.populate('classes', 'name');
 
   res.status(201).json({
     success: true,
@@ -94,6 +100,7 @@ export const loginEducator = asyncHandler(async (req, res) => {
 
   educator.lastLoginAt = new Date();
   await educator.save({ validateBeforeSave: false });
+  await educator.populate('classes', 'name');
 
   const token = signToken({ id: educator._id, role: educator.role });
   sendEducatorAuthResponse(res, educator, token, 200, 'Educator login successful');
@@ -108,6 +115,8 @@ export const logoutEducator = asyncHandler(async (_req, res) => {
 });
 
 export const getEducatorMe = asyncHandler(async (req, res) => {
+  await req.educator.populate('classes', 'name');
+
   res.status(200).json({
     success: true,
     data: {
@@ -153,6 +162,7 @@ export const updateEducatorMe = asyncHandler(async (req, res) => {
   educator.phone = normalizedPhone;
   educator.schoolName = schoolName?.trim() || '';
   await educator.save();
+  await educator.populate('classes', 'name');
 
   res.status(200).json({
     success: true,

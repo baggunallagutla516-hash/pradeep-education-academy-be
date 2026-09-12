@@ -2,7 +2,7 @@ import { Assessment, MAX_FULLSCREEN_EXITS } from '../models/Assessment.js';
 import { AssessmentAttempt } from '../models/AssessmentAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import { classVisibilityForStudent, classRefFields, toPublicClassList } from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
 import {
   buildOptionOrder,
@@ -48,7 +48,8 @@ function assessmentSections(doc) {
 }
 
 function toAssessmentSummaryJson(doc, attempt) {
-  const classFields = classRefFields(doc.studentClass);
+  const classes = toPublicClassList(doc);
+  const classFields = classRefFields(doc.studentClass || classes[0] || null);
   const resultsReleased = Boolean(doc.resultsReleased);
   const submitted = attempt?.status === 'submitted';
 
@@ -56,8 +57,10 @@ function toAssessmentSummaryJson(doc, attempt) {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    studentClass: classFields.studentClass || classes[0]?.id || null,
+    studentClassName:
+      classes.map((item) => item.name).filter(Boolean).join(', ') || classFields.studentClassName,
+    studentClasses: classes,
     subject: doc.subject,
     assessmentDate: doc.assessmentDate,
     endDate: doc.endDate || null,
@@ -106,8 +109,10 @@ async function loadPublishedAssessment(req) {
   const assessment = await Assessment.findOne({
     _id: req.params.id,
     isPublished: true,
-    studentClass: studentClassId(req.user),
-  }).populate('studentClass', 'name');
+    ...classVisibilityForStudent(studentClassId(req.user)),
+  })
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
 
   if (!assessment) throw new ApiError(404, 'Assessment not found');
   return assessment;
@@ -137,8 +142,12 @@ function attemptPayload(attempt, assessment) {
 export const listStudentAssessments = asyncHandler(async (req, res) => {
   const classId = studentClassId(req.user);
 
-  const assessments = await Assessment.find({ isPublished: true, studentClass: classId })
+  const assessments = await Assessment.find({
+    isPublished: true,
+    ...classVisibilityForStudent(classId),
+  })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ assessmentDate: -1, createdAt: -1 });
 
   const attempts = await AssessmentAttempt.find({

@@ -6,6 +6,7 @@ import { Parent } from '../models/Parent.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { readEndDate } from '../utils/examWindow.js';
@@ -83,6 +84,7 @@ function toQuizJson(doc, extra = {}) {
     id: doc._id,
     title: doc.title,
     description: doc.description,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
@@ -139,10 +141,12 @@ function normaliseQuizQuestions(questions) {
 }
 
 export const listQuizzes = asyncHandler(async (_req, res) => {
-  const quizzes = await Quiz.find().sort({ createdAt: -1 });
+  const quizzes = await Quiz.find()
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
+    .sort({ createdAt: -1 });
 
   const counts = await QuizAttempt.aggregate([
-    { $match: { status: 'submitted' } },
     { $group: { _id: '$quiz', count: { $sum: 1 } } },
   ]);
   const countByQuiz = new Map(counts.map((row) => [String(row._id), row.count]));
@@ -158,7 +162,9 @@ export const listQuizzes = asyncHandler(async (_req, res) => {
 });
 
 export const getQuiz = asyncHandler(async (req, res) => {
-  const quiz = await Quiz.findById(req.params.id);
+  const quiz = await Quiz.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
   res.status(200).json({
@@ -171,6 +177,7 @@ export const createQuiz = asyncHandler(async (req, res) => {
   const { title, description, subject, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
+  const { studentClasses, studentClass } = await resolveContentClasses(req.body);
   assertValidQuestions(questions);
 
   const normalised = normaliseQuizQuestions(questions);
@@ -178,6 +185,8 @@ export const createQuiz = asyncHandler(async (req, res) => {
   const quiz = await Quiz.create({
     title: title.trim(),
     description: (description || '').trim(),
+    studentClass,
+    studentClasses,
     subject: (subject || '').trim(),
     endDate: readEndDate(endDate),
     durationMinutes: readDuration(req.body.durationMinutes),
@@ -190,6 +199,11 @@ export const createQuiz = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
+  await quiz.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
+
   res.status(201).json({
     success: true,
     message: 'Quiz created',
@@ -201,10 +215,7 @@ export const updateQuiz = asyncHandler(async (req, res) => {
   const quiz = await Quiz.findById(req.params.id);
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
-  if (quiz.isPublished) {
-    throw new ApiError(400, 'Published quizzes cannot be edited');
-  }
-
+  const wasPublished = Boolean(quiz.isPublished);
   const { title, description, subject, endDate, questions } = req.body;
 
   if (title !== undefined) {
@@ -213,6 +224,11 @@ export const updateQuiz = asyncHandler(async (req, res) => {
   }
   if (description !== undefined) quiz.description = description.trim();
   if (subject !== undefined) quiz.subject = subject.trim();
+  if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    quiz.studentClasses = studentClasses;
+    quiz.studentClass = studentClass;
+  }
   if (endDate !== undefined) quiz.endDate = readEndDate(endDate);
   if (req.body.durationMinutes !== undefined) {
     quiz.durationMinutes = readDuration(req.body.durationMinutes);
@@ -236,11 +252,43 @@ export const updateQuiz = asyncHandler(async (req, res) => {
     quiz.totalMarks = totalMarksFor(normalised);
   }
 
+  const willBePublished = Boolean(quiz.isPublished);
+  const unpublishing = wasPublished && !willBePublished;
+  const editingPublished = wasPublished;
+  const needsWipe = unpublishing || editingPublished;
+
+  if (needsWipe) {
+    if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
+      throw new ApiError(
+        400,
+        'Saving or unpublishing a published quiz deletes all attempt data. Confirm to continue.'
+      );
+    }
+    await QuizAttempt.deleteMany({ quiz: quiz._id });
+    quiz.resultsReleased = false;
+    quiz.resultsReleasedAt = null;
+  }
+
+  if (willBePublished && !quiz.publishedAt) {
+    quiz.publishedAt = new Date();
+  }
+  if (!willBePublished) {
+    quiz.publishedAt = null;
+  }
+
   await quiz.save();
+  await quiz.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(200).json({
     success: true,
-    message: 'Quiz updated',
+    message: unpublishing
+      ? 'Quiz unpublished. All attempt data was deleted.'
+      : editingPublished
+        ? 'Quiz updated. Previous attempt data was deleted so corrected answers apply for everyone.'
+        : 'Quiz updated',
     data: { quiz: toQuizDetailJson(quiz) },
   });
 });
@@ -260,7 +308,9 @@ export const deleteQuiz = asyncHandler(async (req, res) => {
 });
 
 export const listQuizResults = asyncHandler(async (req, res) => {
-  const quiz = await Quiz.findById(req.params.id);
+  const quiz = await Quiz.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
   const attempts = await QuizAttempt.find({ quiz: quiz._id, status: 'submitted' }).sort({
@@ -311,7 +361,9 @@ export const listQuizResults = asyncHandler(async (req, res) => {
 });
 
 export const releaseQuizResults = asyncHandler(async (req, res) => {
-  const quiz = await Quiz.findById(req.params.id);
+  const quiz = await Quiz.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
   const attempts = await QuizAttempt.find({

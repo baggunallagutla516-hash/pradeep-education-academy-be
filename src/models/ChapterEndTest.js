@@ -17,8 +17,14 @@ const chapterEndTestSchema = new mongoose.Schema(
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
-      required: [true, 'Class is required'],
+      default: null,
     },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     chapterNumber: {
       type: Number,
       required: [true, 'Chapter number is required'],
@@ -83,5 +89,6 @@ const chapterEndTestSchema = new mongoose.Schema(
 );
 
 chapterEndTestSchema.index({ studentClass: 1, isPublished: 1, chapterNumber: 1 });
+chapterEndTestSchema.index({ studentClasses: 1, isPublished: 1, chapterNumber: 1 });
 
 export const ChapterEndTest = mongoose.model('ChapterEndTest', chapterEndTestSchema);

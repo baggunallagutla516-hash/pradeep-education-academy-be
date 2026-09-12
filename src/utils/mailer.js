@@ -205,12 +205,15 @@ export async function sendPasswordResetOtpEmail({ to, name, studentName, otp }) 
 
 /**
  * Notifies a user that their account was activated and they can log in.
+ * For students, optionally includes registrationId and email for login.
  */
 export async function sendAccountActivatedEmail({
   to,
   name,
   loginUrl,
   roleLabel = 'account',
+  registrationId,
+  email,
 }) {
   const transport = getTransporter();
 
@@ -222,11 +225,22 @@ export async function sendAccountActivatedEmail({
   }
 
   const safeName = name || 'there';
+  const loginEmail = email || to;
+  const credentialsLines = [];
+  if (registrationId || loginEmail) {
+    credentialsLines.push('Your login details:');
+    if (loginEmail) credentialsLines.push(`Email: ${loginEmail}`);
+    if (registrationId) credentialsLines.push(`Registration ID: ${registrationId}`);
+    credentialsLines.push('You can log in with either your email or Registration ID.');
+    credentialsLines.push('');
+  }
+
   const text = [
     `Hello ${safeName},`,
     '',
     `Good news — your ${roleLabel} at ${env.siteName} has been activated.`,
     '',
+    ...credentialsLines,
     'You can now log in and start using the portal.',
     loginUrl ? `Login here: ${loginUrl}` : '',
     '',
@@ -235,6 +249,26 @@ export async function sendAccountActivatedEmail({
     .filter(Boolean)
     .join('\n');
 
+  const credentialsHtml =
+    registrationId || loginEmail
+      ? `<div style="margin: 0 0 16px; padding: 12px; background: #f6f6f6; border-radius: 8px;">
+          <p style="margin: 0 0 8px; font-weight: 600;">Your login details</p>
+          ${
+            loginEmail
+              ? `<p style="margin: 0 0 4px;"><strong>Email:</strong> ${escapeHtml(loginEmail)}</p>`
+              : ''
+          }
+          ${
+            registrationId
+              ? `<p style="margin: 0 0 8px;"><strong>Registration ID:</strong> ${escapeHtml(registrationId)}</p>`
+              : ''
+          }
+          <p style="margin: 0; color: #555; font-size: 13px;">
+            You can log in with either your email or Registration ID.
+          </p>
+        </div>`
+      : '';
+
   const html = `
     <div style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111;">
       <p style="margin: 0 0 12px;">Hello ${escapeHtml(safeName)},</p>
@@ -242,6 +276,7 @@ export async function sendAccountActivatedEmail({
         Good news — your <strong>${escapeHtml(roleLabel)}</strong> at
         <strong>${escapeHtml(env.siteName)}</strong> has been activated.
       </p>
+      ${credentialsHtml}
       <p style="margin: 0 0 16px; color: #555;">
         Please log in to continue.
       </p>

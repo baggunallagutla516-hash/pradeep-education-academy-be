@@ -8,6 +8,7 @@ import {
   linkParentAndStudent,
   unlinkParentAndStudent,
 } from '../utils/parentStudentLink.js';
+import { assertActiveClassIds } from '../utils/schoolClass.js';
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
@@ -92,7 +93,7 @@ export const getParent = asyncHandler(async (req, res) => {
 });
 
 export const createParent = asyncHandler(async (req, res) => {
-  const { fullName, email, phone, password, confirmPassword } = req.body;
+  const { fullName, email, phone, password, confirmPassword, classes } = req.body;
 
   if (!fullName || !email || !phone || !password || !confirmPassword) {
     throw new ApiError(400, 'Please fill in all required fields');
@@ -113,6 +114,8 @@ export const createParent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
   }
 
+  const classIds = await assertActiveClassIds(classes);
+
   const existing = await Parent.findOne({
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
@@ -129,7 +132,10 @@ export const createParent = asyncHandler(async (req, res) => {
     email: normalizedEmail,
     phone: normalizedPhone,
     password,
+    classes: classIds,
   });
+
+  await parent.populate('classes', 'name');
 
   res.status(201).json({
     success: true,
@@ -245,7 +251,7 @@ export const addParentToStudent = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Student not found');
   }
 
-  const { fullName, email, phone, password, confirmPassword } = req.body;
+  const { fullName, email, phone, password, confirmPassword, classes } = req.body;
 
   if (!fullName || !email || !phone) {
     throw new ApiError(400, 'Full name, email, and phone are required');
@@ -291,15 +297,25 @@ export const addParentToStudent = asyncHandler(async (req, res) => {
     throw new ApiError(409, 'A parent account with this phone number already exists');
   }
 
+  const fallbackClasses =
+    Array.isArray(classes) && classes.length > 0
+      ? classes
+      : student.studentClass
+        ? [String(student.studentClass)]
+        : [];
+  const classIds = await assertActiveClassIds(fallbackClasses);
+
   parent = await Parent.create({
     fullName: fullName.trim(),
     email: normalizedEmail,
     phone: normalizedPhone,
     password,
+    classes: classIds,
   });
   created = true;
 
   await linkParentAndStudent(parent, student);
+  await parent.populate('classes', 'name');
 
   res.status(201).json({
     success: true,

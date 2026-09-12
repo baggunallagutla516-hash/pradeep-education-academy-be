@@ -5,6 +5,7 @@ import { toPublicStudent } from '../utils/authResponse.js';
 import { env } from '../config/env.js';
 import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { assertActiveClassId } from '../utils/schoolClass.js';
+import { ensureStudentRegistrationId } from '../utils/registrationId.js';
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
@@ -51,6 +52,7 @@ export const listStudents = asyncHandler(async (req, res) => {
       { email: { $regex: q, $options: 'i' } },
       { phone: { $regex: q, $options: 'i' } },
       { schoolName: { $regex: q, $options: 'i' } },
+      { registrationId: { $regex: q, $options: 'i' } },
     ];
   }
   if (status === 'active') filter.isActive = true;
@@ -164,6 +166,7 @@ export const setStudentActive = asyncHandler(async (req, res) => {
   await student.save({ validateBeforeSave: false });
 
   if (isActive && !wasActive && student.email) {
+    const registrationId = await ensureStudentRegistrationId(student);
     const clientOrigin = env.clientOrigins[0] || '';
     const loginUrl = clientOrigin ? `${clientOrigin.replace(/\/$/, '')}/login` : '';
     try {
@@ -172,6 +175,8 @@ export const setStudentActive = asyncHandler(async (req, res) => {
         name: student.fullName,
         loginUrl,
         roleLabel: 'student account',
+        registrationId,
+        email: student.email,
       });
     } catch (err) {
       console.error(`[mailer] Failed to email activation to ${student.email}:`, err?.message || err);

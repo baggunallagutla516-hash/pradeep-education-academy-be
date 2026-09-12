@@ -3,7 +3,7 @@ import { DppAttempt } from '../models/DppAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
-import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
@@ -24,13 +24,11 @@ function toQuestionJson(question) {
 }
 
 function toDppJson(doc, extra = {}) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     practiceDate: doc.practiceDate,
     endDate: doc.endDate || null,
@@ -82,10 +80,12 @@ function readDuration(value) {
 }
 
 export const listDpps = asyncHandler(async (req, res) => {
-  const dpps = await Dpp.find().populate('studentClass', 'name').sort({ practiceDate: -1, createdAt: -1 });
+  const dpps = await Dpp.find()
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
+    .sort({ practiceDate: -1, createdAt: -1 });
 
   const counts = await DppAttempt.aggregate([
-    { $match: { status: 'submitted' } },
     { $group: { _id: '$dpp', count: { $sum: 1 } } },
   ]);
   const countByDpp = new Map(counts.map((row) => [String(row._id), row.count]));
@@ -99,7 +99,9 @@ export const listDpps = asyncHandler(async (req, res) => {
 });
 
 export const getDpp = asyncHandler(async (req, res) => {
-  const dpp = await Dpp.findById(req.params.id).populate('studentClass', 'name');
+  const dpp = await Dpp.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!dpp) throw new ApiError(404, 'DPP not found');
 
   res.status(200).json({
@@ -109,21 +111,22 @@ export const getDpp = asyncHandler(async (req, res) => {
 });
 
 export const createDpp = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, practiceDate, endDate, questions } = req.body;
+  const { title, description, subject, practiceDate, endDate, questions } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
-  await assertActiveClassId(studentClass);
+  const { studentClasses, studentClass } = await resolveContentClasses(req.body);
   assertValidQuestions(questions);
 
   const normalised = normaliseQuestions(questions);
   const practice = readPracticeDate(practiceDate);
   const ends = readEndDate(endDate);
-  assertEndDateNotBefore(ends, practice, 'practice date');
+  assertEndDateNotBefore(ends, practice, 'starting date and time');
 
   const dpp = await Dpp.create({
     title: title.trim(),
     description: (description || '').trim(),
     studentClass,
+    studentClasses,
     subject: (subject || '').trim(),
     practiceDate: practice,
     endDate: ends,
@@ -137,7 +140,10 @@ export const createDpp = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
-  await dpp.populate('studentClass', 'name');
+  await dpp.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(201).json({
     success: true,
@@ -150,11 +156,8 @@ export const updateDpp = asyncHandler(async (req, res) => {
   const dpp = await Dpp.findById(req.params.id);
   if (!dpp) throw new ApiError(404, 'DPP not found');
 
-  if (dpp.isPublished) {
-    throw new ApiError(400, 'Published DPPs cannot be edited');
-  }
-
-  const { title, description, studentClass, subject, practiceDate, endDate, questions } = req.body;
+  const wasPublished = Boolean(dpp.isPublished);
+  const { title, description, subject, practiceDate, endDate, questions } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -162,14 +165,15 @@ export const updateDpp = asyncHandler(async (req, res) => {
   }
   if (description !== undefined) dpp.description = description.trim();
   if (subject !== undefined) dpp.subject = subject.trim();
-  if (studentClass !== undefined) {
-    await assertActiveClassId(studentClass);
+  if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    dpp.studentClasses = studentClasses;
     dpp.studentClass = studentClass;
   }
   if (practiceDate !== undefined) dpp.practiceDate = readPracticeDate(practiceDate);
   if (endDate !== undefined) dpp.endDate = readEndDate(endDate);
   if (dpp.endDate) {
-    assertEndDateNotBefore(dpp.endDate, dpp.practiceDate, 'practice date');
+    assertEndDateNotBefore(dpp.endDate, dpp.practiceDate, 'starting date and time');
   }
   if (req.body.durationMinutes !== undefined) {
     dpp.durationMinutes = readDuration(req.body.durationMinutes);
@@ -193,12 +197,43 @@ export const updateDpp = asyncHandler(async (req, res) => {
     dpp.totalMarks = totalMarksFor(normalised);
   }
 
+  const willBePublished = Boolean(dpp.isPublished);
+  const unpublishing = wasPublished && !willBePublished;
+  const editingPublished = wasPublished;
+  const needsWipe = unpublishing || editingPublished;
+
+  if (needsWipe) {
+    if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
+      throw new ApiError(
+        400,
+        'Saving or unpublishing a published DPP deletes all attempt data. Confirm to continue.'
+      );
+    }
+    await DppAttempt.deleteMany({ dpp: dpp._id });
+    dpp.resultsReleased = false;
+    dpp.resultsReleasedAt = null;
+  }
+
+  if (willBePublished && !dpp.publishedAt) {
+    dpp.publishedAt = new Date();
+  }
+  if (!willBePublished) {
+    dpp.publishedAt = null;
+  }
+
   await dpp.save();
-  await dpp.populate('studentClass', 'name');
+  await dpp.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(200).json({
     success: true,
-    message: 'DPP updated',
+    message: unpublishing
+      ? 'DPP unpublished. All attempt data was deleted.'
+      : editingPublished
+        ? 'DPP updated. Previous attempt data was deleted so corrected answers apply for everyone.'
+        : 'DPP updated',
     data: { dpp: toDppDetailJson(dpp) },
   });
 });
@@ -218,7 +253,9 @@ export const deleteDpp = asyncHandler(async (req, res) => {
 });
 
 export const listDppResults = asyncHandler(async (req, res) => {
-  const dpp = await Dpp.findById(req.params.id).populate('studentClass', 'name');
+  const dpp = await Dpp.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!dpp) throw new ApiError(404, 'DPP not found');
 
   const attempts = await DppAttempt.find({ dpp: dpp._id, status: 'submitted' })
@@ -261,7 +298,9 @@ export const listDppResults = asyncHandler(async (req, res) => {
 });
 
 export const releaseDppResults = asyncHandler(async (req, res) => {
-  const dpp = await Dpp.findById(req.params.id).populate('studentClass', 'name');
+  const dpp = await Dpp.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!dpp) throw new ApiError(404, 'DPP not found');
 
   const attempts = await DppAttempt.find({

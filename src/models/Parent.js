@@ -52,6 +52,12 @@ const parentSchema = new mongoose.Schema(
         ref: 'Student',
       },
     ],
+    classes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     isActive: {
       type: Boolean,
       default: true,

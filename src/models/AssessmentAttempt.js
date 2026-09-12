@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 
+export const EXAM_PARTICIPANT_ROLES = ['student', 'educator'];
+
 const assessmentResponseSchema = new mongoose.Schema(
   {
     question: {
@@ -42,10 +44,20 @@ const assessmentAttemptSchema = new mongoose.Schema(
       ref: 'Assessment',
       required: true,
     },
+    participantRole: {
+      type: String,
+      enum: EXAM_PARTICIPANT_ROLES,
+      default: 'student',
+    },
+    participantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    /** @deprecated prefer participantId; kept for existing student attempts */
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',
-      required: true,
+      default: null,
     },
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
@@ -116,7 +128,12 @@ const assessmentAttemptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-assessmentAttemptSchema.index({ assessment: 1, student: 1 }, { unique: true });
+assessmentAttemptSchema.index({ assessment: 1, student: 1 }, { unique: true, sparse: true });
+assessmentAttemptSchema.index(
+  { assessment: 1, participantRole: 1, participantId: 1 },
+  { unique: true, sparse: true }
+);
 assessmentAttemptSchema.index({ student: 1, status: 1 });
+assessmentAttemptSchema.index({ participantRole: 1, participantId: 1, status: 1 });
 
 export const AssessmentAttempt = mongoose.model('AssessmentAttempt', assessmentAttemptSchema);

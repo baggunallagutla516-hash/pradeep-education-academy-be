@@ -29,6 +29,28 @@ import {
   startEducatorQuiz,
   submitEducatorQuiz,
 } from '../controllers/educatorQuizController.js';
+import {
+  getEducatorAssessment,
+  getEducatorAssessmentResult,
+  listEducatorAssessments,
+  recordEducatorFullscreenExit,
+  startEducatorAssessment,
+  submitEducatorAssessment,
+} from '../controllers/educatorAssessmentController.js';
+import {
+  getEducatorDpp,
+  getEducatorDppResult,
+  listEducatorDpps,
+  startEducatorDpp,
+  submitEducatorDpp,
+} from '../controllers/educatorDppController.js';
+import {
+  getEducatorSlipTest,
+  getEducatorSlipTestResult,
+  listEducatorSlipTests,
+  startEducatorSlipTest,
+  submitEducatorSlipTest,
+} from '../controllers/educatorSlipTestController.js';
 import { protectEducator } from '../middleware/educatorAuth.js';
 
 const authLimiter = rateLimit({
@@ -78,5 +100,24 @@ router.get('/quizzes/:id', protectEducator, getEducatorQuiz);
 router.post('/quizzes/:id/start', protectEducator, startEducatorQuiz);
 router.post('/quizzes/:id/submit', protectEducator, submitEducatorQuiz);
 router.get('/quizzes/:id/result', protectEducator, getEducatorQuizResult);
+
+router.get('/assessments', protectEducator, listEducatorAssessments);
+router.get('/assessments/:id', protectEducator, getEducatorAssessment);
+router.post('/assessments/:id/start', protectEducator, startEducatorAssessment);
+router.post('/assessments/:id/fullscreen-exit', protectEducator, recordEducatorFullscreenExit);
+router.post('/assessments/:id/submit', protectEducator, submitEducatorAssessment);
+router.get('/assessments/:id/result', protectEducator, getEducatorAssessmentResult);
+
+router.get('/dpps', protectEducator, listEducatorDpps);
+router.get('/dpps/:id', protectEducator, getEducatorDpp);
+router.post('/dpps/:id/start', protectEducator, startEducatorDpp);
+router.post('/dpps/:id/submit', protectEducator, submitEducatorDpp);
+router.get('/dpps/:id/result', protectEducator, getEducatorDppResult);
+
+router.get('/slip-tests', protectEducator, listEducatorSlipTests);
+router.get('/slip-tests/:id', protectEducator, getEducatorSlipTest);
+router.post('/slip-tests/:id/start', protectEducator, startEducatorSlipTest);
+router.post('/slip-tests/:id/submit', protectEducator, submitEducatorSlipTest);
+router.get('/slip-tests/:id/result', protectEducator, getEducatorSlipTestResult);
 
 export default router;

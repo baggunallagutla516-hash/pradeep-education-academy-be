@@ -55,7 +55,16 @@ const slipTestAttemptSchema = new mongoose.Schema(
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',
-      required: true,
+      default: null,
+    },
+    participantRole: {
+      type: String,
+      enum: ['student', 'educator'],
+      default: 'student',
+    },
+    participantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
@@ -120,7 +129,12 @@ const slipTestAttemptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-slipTestAttemptSchema.index({ slipTest: 1, student: 1 }, { unique: true });
+slipTestAttemptSchema.index({ slipTest: 1, student: 1 }, { unique: true, sparse: true });
+slipTestAttemptSchema.index(
+  { slipTest: 1, participantRole: 1, participantId: 1 },
+  { unique: true, sparse: true }
+);
 slipTestAttemptSchema.index({ student: 1, status: 1 });
+slipTestAttemptSchema.index({ participantRole: 1, participantId: 1, status: 1 });
 
 export const SlipTestAttempt = mongoose.model('SlipTestAttempt', slipTestAttemptSchema);

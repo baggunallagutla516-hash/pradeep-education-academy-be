@@ -21,7 +21,10 @@ export const protectEducator = asyncHandler(async (req, _res, next) => {
     throw new ApiError(403, 'Educator access required');
   }
 
-  const educator = await Educator.findOne({ _id: decoded.id, deletedAt: null });
+  const educator = await Educator.findOne({ _id: decoded.id, deletedAt: null }).populate(
+    'classes',
+    'name'
+  );
 
   if (!educator || !educator.isActive) {
     throw new ApiError(401, 'Educator account not found or inactive');

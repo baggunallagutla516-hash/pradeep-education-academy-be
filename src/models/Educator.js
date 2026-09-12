@@ -52,6 +52,12 @@ const educatorSchema = new mongoose.Schema(
       maxlength: [120, 'School name cannot exceed 120 characters'],
       default: '',
     },
+    classes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     isActive: {
       type: Boolean,
       default: false,

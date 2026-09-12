@@ -8,6 +8,7 @@ import {
   listChildren,
   loginParent,
   logoutParent,
+  registerParent,
   resetParentPassword,
   updateParentMe,
   verifyParentResetOtp,
@@ -45,6 +46,7 @@ const forgotPasswordLimiter = rateLimit({
 
 const router = Router();
 
+router.post('/register', authLimiter, registerParent);
 router.post('/login', authLimiter, loginParent);
 router.post('/logout', logoutParent);
 router.post('/forgot-password', forgotPasswordLimiter, forgotParentPassword);

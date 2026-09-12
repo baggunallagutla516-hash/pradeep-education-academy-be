@@ -9,6 +9,12 @@ import {
   toShuffledOptions,
 } from './optionOrder.js';
 import { assertExamOpen, isExamClosed } from './examWindow.js';
+import {
+  assertDocInAssignedClasses,
+  buildAssignedClassFilter,
+  classVisibilityForStudent,
+  contentClassJsonFields,
+} from './schoolClass.js';
 
 function toAttemptQuestionJson(question, index, orderByQuestion) {
   return {
@@ -29,6 +35,7 @@ function toQuizSummaryJson(doc, attempt) {
     id: doc._id,
     title: doc.title,
     description: doc.description,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
@@ -69,13 +76,47 @@ async function finaliseExpiredAttempt(attempt, quiz) {
   return attempt;
 }
 
-async function loadPublishedQuiz(quizId) {
-  const quiz = await Quiz.findOne({
-    _id: quizId,
-    isPublished: true,
-  });
+function assigneeFromOptions(role, options = {}) {
+  if (role === 'educator') return options.educator;
+  if (role === 'parent') return options.parent;
+  return null;
+}
 
+async function resolveQuizListFilter(role, options = {}) {
+  if (role === 'student') {
+    return {
+      isPublished: true,
+      ...classVisibilityForStudent(options.classId),
+    };
+  }
+
+  if (role === 'educator' || role === 'parent') {
+    const { filter: classFilter } = await buildAssignedClassFilter(
+      assigneeFromOptions(role, options) || {},
+      ''
+    );
+    return { isPublished: true, ...classFilter };
+  }
+
+  return { isPublished: true, studentClass: { $in: [] } };
+}
+
+async function loadPublishedQuiz(quizId, role, options = {}) {
+  const query = { _id: quizId, isPublished: true };
+
+  if (role === 'student') {
+    Object.assign(query, classVisibilityForStudent(options.classId));
+  }
+
+  const quiz = await Quiz.findOne(query)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!quiz) throw new ApiError(404, 'Quiz not found');
+
+  if (role === 'educator' || role === 'parent') {
+    assertDocInAssignedClasses(quiz, assigneeFromOptions(role, options) || {}, 'Quiz');
+  }
+
   return quiz;
 }
 
@@ -151,8 +192,11 @@ function buildResult(quiz, attempt) {
 /** Shared quiz attempt handlers for student / educator / parent. */
 export function createQuizParticipantHandlers(role) {
   return {
-    list: async (participantId) => {
-      const quizzes = await Quiz.find({ isPublished: true }).sort({ createdAt: -1 });
+    list: async (participantId, options = {}) => {
+      const quizzes = await Quiz.find(await resolveQuizListFilter(role, options))
+        .populate('studentClass', 'name')
+        .populate('studentClasses', 'name')
+        .sort({ createdAt: -1 });
 
       const attempts = await QuizAttempt.find({
         participantRole: role,
@@ -166,8 +210,8 @@ export function createQuizParticipantHandlers(role) {
       };
     },
 
-    get: async (quizId, participantId) => {
-      const quiz = await loadPublishedQuiz(quizId);
+    get: async (quizId, participantId, options = {}) => {
+      const quiz = await loadPublishedQuiz(quizId, role, options);
       let attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
 
       if (attempt && attempt.status === 'in_progress' && remainingSeconds(attempt) === 0) {
@@ -177,8 +221,8 @@ export function createQuizParticipantHandlers(role) {
       return { quiz: toQuizSummaryJson(quiz, attempt) };
     },
 
-    start: async (quizId, participantId) => {
-      const quiz = await loadPublishedQuiz(quizId);
+    start: async (quizId, participantId, options = {}) => {
+      const quiz = await loadPublishedQuiz(quizId, role, options);
 
       if (quiz.questions.length === 0) {
         throw new ApiError(400, 'This quiz has no questions yet');
@@ -233,8 +277,8 @@ export function createQuizParticipantHandlers(role) {
       };
     },
 
-    submit: async (quizId, participantId, body = {}) => {
-      const quiz = await loadPublishedQuiz(quizId);
+    submit: async (quizId, participantId, body = {}, options = {}) => {
+      const quiz = await loadPublishedQuiz(quizId, role, options);
       const attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
 
       if (!attempt) throw new ApiError(400, 'Start the quiz before submitting');
@@ -288,8 +332,8 @@ export function createQuizParticipantHandlers(role) {
       };
     },
 
-    result: async (quizId, participantId) => {
-      const quiz = await loadPublishedQuiz(quizId);
+    result: async (quizId, participantId, options = {}) => {
+      const quiz = await loadPublishedQuiz(quizId, role, options);
       let attempt = await QuizAttempt.findOne(findAttemptQuery(quiz._id, role, participantId));
 
       if (attempt && attempt.status === 'in_progress' && remainingSeconds(attempt) === 0) {

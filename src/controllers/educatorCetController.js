@@ -1,25 +1,23 @@
-import mongoose from 'mongoose';
 import { ChapterEndTest } from '../models/ChapterEndTest.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
-  assertActiveClassId,
-  classRefFields,
-  listActiveClasses,
+  assertDocInAssignedClasses,
+  buildAssignedClassFilter,
+  contentClassJsonFields,
+  listClassesByIds,
   toPublicClass,
 } from '../utils/schoolClass.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
+  'title description studentClass studentClasses chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
 
 function toEducatorCetJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     chapterNumber: doc.chapterNumber,
     chapterName: doc.chapterName,
     coverImageUrl: doc.coverImageUrl,
@@ -33,28 +31,28 @@ function toEducatorCetJson(doc) {
 }
 
 export const listEducatorCets = asyncHandler(async (req, res) => {
-  const filter = { isPublished: true };
-  const studentClass =
+  const queryClass =
     typeof req.query.studentClass === 'string' ? req.query.studentClass.trim() : '';
+  const { filter: classFilter, assignedIds, selectedClass } = await buildAssignedClassFilter(
+    req.educator,
+    queryClass
+  );
+  const filter = { isPublished: true, ...classFilter };
 
-  if (studentClass) {
-    await assertActiveClassId(studentClass);
-    filter.studentClass = new mongoose.Types.ObjectId(studentClass);
-  }
-
-  const [cets, classes] = await Promise.all([
+  const [cets, classDocs] = await Promise.all([
     ChapterEndTest.find(filter)
       .populate('studentClass', 'name')
+      .populate('studentClasses', 'name')
       .sort({ studentClass: 1, chapterNumber: 1, createdAt: -1 })
       .select(PUBLIC_FIELDS),
-    listActiveClasses(),
+    listClassesByIds(assignedIds),
   ]);
 
   res.status(200).json({
     success: true,
     data: {
-      studentClass: studentClass || null,
-      classes: classes.map(toPublicClass),
+      studentClass: selectedClass,
+      classes: classDocs.map(toPublicClass),
       cets: cets.map(toEducatorCetJson),
     },
   });
@@ -66,9 +64,11 @@ export const getEducatorCet = asyncHandler(async (req, res) => {
     isPublished: true,
   })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .select(PUBLIC_FIELDS);
 
   if (!cet) throw new ApiError(404, 'C.E.T. not found');
+  assertDocInAssignedClasses(cet, req.educator, 'C.E.T.');
 
   res.status(200).json({
     success: true,

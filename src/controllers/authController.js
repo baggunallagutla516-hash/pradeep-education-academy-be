@@ -15,6 +15,7 @@ import {
   listActiveClasses,
   toPublicClass,
 } from '../utils/schoolClass.js';
+import { generateUniqueRegistrationId } from '../utils/registrationId.js';
 
 const {
   forgotPassword,
@@ -67,6 +68,8 @@ export const register = asyncHandler(async (req, res) => {
     throw new ApiError(409, 'An account with this phone number already exists');
   }
 
+  const registrationId = await generateUniqueRegistrationId();
+
   const created = await Student.create({
     fullName: fullName.trim(),
     email: email.toLowerCase().trim(),
@@ -74,6 +77,7 @@ export const register = asyncHandler(async (req, res) => {
     studentClass,
     schoolName: schoolName.trim(),
     rollNumber: rollNumber.trim(),
+    registrationId,
     password,
   });
 
@@ -91,17 +95,24 @@ export const register = asyncHandler(async (req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  const rawIdentifier = String(email || '').trim();
+  const emailLookup = rawIdentifier.toLowerCase();
+  const registrationLookup = rawIdentifier.toUpperCase();
 
-  if (!email || !password) {
-    throw new ApiError(400, 'Email and password are required');
+  if (!rawIdentifier || !password) {
+    throw new ApiError(400, 'Email / Registration ID and password are required');
   }
 
-  const student = await Student.findOne({ email: email.toLowerCase().trim() }).select(
-    '+password'
-  );
+  const student = await Student.findOne({
+    $or: [
+      { email: emailLookup },
+      { registrationId: registrationLookup },
+      { registrationId: new RegExp(`^${registrationLookup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    ],
+  }).select('+password');
 
   if (!student || !(await student.comparePassword(password))) {
-    throw new ApiError(401, 'Invalid email or password');
+    throw new ApiError(401, 'Invalid email / Registration ID or password');
   }
 
   if (student.deletedAt) {
@@ -116,6 +127,11 @@ export const login = asyncHandler(async (req, res) => {
   }
 
   student.lastLoginAt = new Date();
+  if (!student.registrationId) {
+    student.registrationId = await generateUniqueRegistrationId();
+  } else if (student.registrationId !== student.registrationId.toUpperCase()) {
+    student.registrationId = student.registrationId.toUpperCase();
+  }
   await student.save({ validateBeforeSave: false });
 
   const populated = await loadStudentPublic(student._id);

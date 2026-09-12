@@ -52,6 +52,14 @@ const studentSchema = new mongoose.Schema(
       maxlength: [40, 'Roll number cannot exceed 40 characters'],
       default: '',
     },
+    registrationId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+      match: [/^PDPEDU\d{4}$/, 'Registration ID must be PDPEDU followed by 4 digits'],
+    },
     password: {
       type: String,
       required: [true, 'Password is required'],

@@ -17,8 +17,14 @@ const worksheetSchema = new mongoose.Schema(
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
-      required: [true, 'Class is required'],
+      default: null,
     },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     coverImageUrl: {
       type: String,
       required: [true, 'Cover image is required'],
@@ -71,5 +77,6 @@ const worksheetSchema = new mongoose.Schema(
 );
 
 worksheetSchema.index({ studentClass: 1, isPublished: 1, publishedAt: -1 });
+worksheetSchema.index({ studentClasses: 1, isPublished: 1, publishedAt: -1 });
 
 export const Worksheet = mongoose.model('Worksheet', worksheetSchema);

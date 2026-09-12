@@ -1,4 +1,5 @@
 import { getCookieOptions } from './authResponse.js';
+import { toPublicClasses } from './schoolClass.js';
 
 export function toPublicParent(parent) {
   return {
@@ -8,6 +9,7 @@ export function toPublicParent(parent) {
     phone: parent.phone,
     role: parent.role,
     studentIds: (parent.studentIds || []).map((id) => String(id)),
+    classes: toPublicClasses(parent.classes),
     createdAt: parent.createdAt,
     lastLoginAt: parent.lastLoginAt,
   };

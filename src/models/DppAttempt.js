@@ -55,7 +55,16 @@ const dppAttemptSchema = new mongoose.Schema(
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',
-      required: true,
+      default: null,
+    },
+    participantRole: {
+      type: String,
+      enum: ['student', 'educator'],
+      default: 'student',
+    },
+    participantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
     },
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
@@ -120,7 +129,12 @@ const dppAttemptSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-dppAttemptSchema.index({ dpp: 1, student: 1 }, { unique: true });
+dppAttemptSchema.index({ dpp: 1, student: 1 }, { unique: true, sparse: true });
+dppAttemptSchema.index(
+  { dpp: 1, participantRole: 1, participantId: 1 },
+  { unique: true, sparse: true }
+);
 dppAttemptSchema.index({ student: 1, status: 1 });
+dppAttemptSchema.index({ participantRole: 1, participantId: 1, status: 1 });
 
 export const DppAttempt = mongoose.model('DppAttempt', dppAttemptSchema);

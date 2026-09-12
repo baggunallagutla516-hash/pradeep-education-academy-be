@@ -4,6 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { env } from '../config/env.js';
 import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { toPublicEducator } from '../utils/educatorAuthResponse.js';
+import { assertActiveClassIds } from '../utils/schoolClass.js';
 
 function normalizePhone(phone) {
   return String(phone || '')
@@ -57,7 +58,10 @@ export const listEducators = asyncHandler(async (req, res) => {
 });
 
 export const getEducator = asyncHandler(async (req, res) => {
-  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
+  const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null }).populate(
+    'classes',
+    'name'
+  );
   if (!educator) {
     throw new ApiError(404, 'Educator not found');
   }
@@ -69,7 +73,7 @@ export const getEducator = asyncHandler(async (req, res) => {
 });
 
 export const updateEducator = asyncHandler(async (req, res) => {
-  const { fullName, email, phone, schoolName } = req.body;
+  const { fullName, email, phone, schoolName, classes } = req.body;
 
   if (!fullName || !email || !phone) {
     throw new ApiError(400, 'Please fill in all required fields');
@@ -81,6 +85,8 @@ export const updateEducator = asyncHandler(async (req, res) => {
   if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
     throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
   }
+
+  const classIds = await assertActiveClassIds(classes);
 
   const educator = await Educator.findOne({ _id: req.params.id, deletedAt: null });
   if (!educator) {
@@ -104,7 +110,9 @@ export const updateEducator = asyncHandler(async (req, res) => {
   educator.email = normalizedEmail;
   educator.phone = normalizedPhone;
   educator.schoolName = schoolName?.trim() || '';
+  educator.classes = classIds;
   await educator.save();
+  await educator.populate('classes', 'name');
 
   res.status(200).json({
     success: true,

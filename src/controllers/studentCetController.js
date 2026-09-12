@@ -1,19 +1,21 @@
 import { ChapterEndTest } from '../models/ChapterEndTest.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import {
+  classRefFields,
+  classVisibilityForStudent,
+  contentClassJsonFields,
+} from '../utils/schoolClass.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
+  'title description studentClass studentClasses chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
 
 function toStudentCetJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     chapterNumber: doc.chapterNumber,
     chapterName: doc.chapterName,
     coverImageUrl: doc.coverImageUrl,
@@ -38,9 +40,10 @@ export const listStudentCets = asyncHandler(async (req, res) => {
 
   const cets = await ChapterEndTest.find({
     isPublished: true,
-    studentClass: classId,
+    ...classVisibilityForStudent(classId),
   })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ chapterNumber: 1, createdAt: -1 })
     .select(PUBLIC_FIELDS);
 
@@ -60,9 +63,10 @@ export const getStudentCet = asyncHandler(async (req, res) => {
   const cet = await ChapterEndTest.findOne({
     _id: req.params.id,
     isPublished: true,
-    studentClass: studentClassId(req.user),
+    ...classVisibilityForStudent(studentClassId(req.user)),
   })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .select(PUBLIC_FIELDS);
 
   if (!cet) throw new ApiError(404, 'C.E.T. not found');

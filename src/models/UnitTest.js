@@ -17,8 +17,14 @@ const unitTestSchema = new mongoose.Schema(
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
-      required: [true, 'Class is required'],
+      default: null,
     },
+    studentClasses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SchoolClass',
+      },
+    ],
     unitNumber: {
       type: Number,
       required: [true, 'Unit number is required'],
@@ -83,5 +89,6 @@ const unitTestSchema = new mongoose.Schema(
 );
 
 unitTestSchema.index({ studentClass: 1, isPublished: 1, unitNumber: 1 });
+unitTestSchema.index({ studentClasses: 1, isPublished: 1, unitNumber: 1 });
 
 export const UnitTest = mongoose.model('UnitTest', unitTestSchema);

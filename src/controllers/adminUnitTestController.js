@@ -2,8 +2,7 @@ import fs from 'fs';
 import { UnitTest } from '../models/UnitTest.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { assertActiveClassId } from '../utils/schoolClass.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import {
   buildObjectKey,
   deleteObject,
@@ -12,13 +11,11 @@ import {
 } from '../utils/storage.js';
 
 function toUnitTestJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     unitNumber: doc.unitNumber,
     unitName: doc.unitName,
     coverImageUrl: doc.coverImageUrl,
@@ -82,6 +79,7 @@ async function uploadFile(file) {
 export const listUnitTests = asyncHandler(async (_req, res) => {
   const unitTests = await UnitTest.find()
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ studentClass: 1, unitNumber: 1, createdAt: -1 });
   res.status(200).json({
     success: true,
@@ -90,7 +88,9 @@ export const listUnitTests = asyncHandler(async (_req, res) => {
 });
 
 export const getUnitTest = asyncHandler(async (req, res) => {
-  const unitTest = await UnitTest.findById(req.params.id).populate('studentClass', 'name');
+  const unitTest = await UnitTest.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
   res.status(200).json({
     success: true,
@@ -99,14 +99,13 @@ export const getUnitTest = asyncHandler(async (req, res) => {
 });
 
 export const createUnitTest = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, unitNumber, unitName, isPublished } = req.body;
+  const { title, description, unitNumber, unitName, isPublished } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
   try {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
-    if (!studentClass?.trim()) throw new ApiError(400, 'Class is required');
-    await assertActiveClassId(studentClass);
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
     const unit = parseUnitNumber(unitNumber);
 
     if (!file) throw new ApiError(400, 'Question paper file is required');
@@ -126,6 +125,7 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       title: title.trim(),
       description: description?.trim() || '',
       studentClass,
+      studentClasses,
       unitNumber: unit,
       unitName: unitName?.trim() || '',
       coverImageUrl: coverUpload?.url || '',
@@ -140,7 +140,10 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       createdBy: req.admin._id,
     });
 
-    await unitTest.populate('studentClass', 'name');
+    await unitTest.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(201).json({
       success: true,
@@ -158,8 +161,7 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
   const unitTest = await UnitTest.findById(req.params.id);
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
 
-  const { title, description, studentClass, unitNumber, unitName, isPublished, removeCoverImage } =
-    req.body;
+  const { title, description, unitNumber, unitName, isPublished, removeCoverImage } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -171,8 +173,9 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
     if (description !== undefined) {
       unitTest.description = String(description).trim();
     }
-    if (studentClass !== undefined) {
-      await assertActiveClassId(studentClass);
+    if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+      const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+      unitTest.studentClasses = studentClasses;
       unitTest.studentClass = studentClass;
     }
     if (unitNumber !== undefined) {
@@ -218,7 +221,10 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
     }
 
     await unitTest.save();
-    await unitTest.populate('studentClass', 'name');
+    await unitTest.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(200).json({
       success: true,

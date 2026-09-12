@@ -2,8 +2,7 @@ import fs from 'fs';
 import { ChapterEndTest } from '../models/ChapterEndTest.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { assertActiveClassId } from '../utils/schoolClass.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import {
   buildObjectKey,
   deleteObject,
@@ -12,13 +11,11 @@ import {
 } from '../utils/storage.js';
 
 function toCetJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     chapterNumber: doc.chapterNumber,
     chapterName: doc.chapterName,
     coverImageUrl: doc.coverImageUrl,
@@ -82,6 +79,7 @@ async function uploadFile(file) {
 export const listCets = asyncHandler(async (_req, res) => {
   const cets = await ChapterEndTest.find()
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ studentClass: 1, chapterNumber: 1, createdAt: -1 });
   res.status(200).json({
     success: true,
@@ -90,7 +88,9 @@ export const listCets = asyncHandler(async (_req, res) => {
 });
 
 export const getCet = asyncHandler(async (req, res) => {
-  const cet = await ChapterEndTest.findById(req.params.id).populate('studentClass', 'name');
+  const cet = await ChapterEndTest.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!cet) throw new ApiError(404, 'C.E.T. not found');
   res.status(200).json({
     success: true,
@@ -99,14 +99,13 @@ export const getCet = asyncHandler(async (req, res) => {
 });
 
 export const createCet = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, chapterNumber, chapterName, isPublished } = req.body;
+  const { title, description, chapterNumber, chapterName, isPublished } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
   try {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
-    if (!studentClass?.trim()) throw new ApiError(400, 'Class is required');
-    await assertActiveClassId(studentClass);
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
     const chapter = parseChapterNumber(chapterNumber);
 
     if (!file) throw new ApiError(400, 'Question paper file is required');
@@ -126,6 +125,7 @@ export const createCet = asyncHandler(async (req, res) => {
       title: title.trim(),
       description: description?.trim() || '',
       studentClass,
+      studentClasses,
       chapterNumber: chapter,
       chapterName: chapterName?.trim() || '',
       coverImageUrl: coverUpload?.url || '',
@@ -140,7 +140,10 @@ export const createCet = asyncHandler(async (req, res) => {
       createdBy: req.admin._id,
     });
 
-    await cet.populate('studentClass', 'name');
+    await cet.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(201).json({
       success: true,
@@ -158,15 +161,8 @@ export const updateCet = asyncHandler(async (req, res) => {
   const cet = await ChapterEndTest.findById(req.params.id);
   if (!cet) throw new ApiError(404, 'C.E.T. not found');
 
-  const {
-    title,
-    description,
-    studentClass,
-    chapterNumber,
-    chapterName,
-    isPublished,
-    removeCoverImage,
-  } = req.body;
+  const { title, description, chapterNumber, chapterName, isPublished, removeCoverImage } =
+    req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -178,8 +174,9 @@ export const updateCet = asyncHandler(async (req, res) => {
     if (description !== undefined) {
       cet.description = String(description).trim();
     }
-    if (studentClass !== undefined) {
-      await assertActiveClassId(studentClass);
+    if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+      const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+      cet.studentClasses = studentClasses;
       cet.studentClass = studentClass;
     }
     if (chapterNumber !== undefined) {
@@ -225,7 +222,10 @@ export const updateCet = asyncHandler(async (req, res) => {
     }
 
     await cet.save();
-    await cet.populate('studentClass', 'name');
+    await cet.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
 
     res.status(200).json({
       success: true,

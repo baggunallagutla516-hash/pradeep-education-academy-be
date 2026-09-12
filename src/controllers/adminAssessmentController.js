@@ -2,7 +2,7 @@ import { Assessment } from '../models/Assessment.js';
 import { AssessmentAttempt } from '../models/AssessmentAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { assertActiveClassId, classRefFields } from '../utils/schoolClass.js';
+import { contentClassJsonFields, resolveContentClasses } from '../utils/schoolClass.js';
 import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/quizGrading.js';
 import { ASSESSMENT_QUESTION_TYPES } from '../models/Assessment.js';
 import { env } from '../config/env.js';
@@ -61,7 +61,6 @@ function normaliseAssessmentQuestions(questions, sections) {
 }
 
 function toAssessmentJson(doc, extra = {}) {
-  const classFields = classRefFields(doc.studentClass);
   const sections =
     Array.isArray(doc.sections) && doc.sections.length > 0
       ? doc.sections.map((item) => item.name)
@@ -71,8 +70,7 @@ function toAssessmentJson(doc, extra = {}) {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     assessmentDate: doc.assessmentDate,
     endDate: doc.endDate || null,
@@ -133,10 +131,10 @@ function readDuration(value) {
 export const listAssessments = asyncHandler(async (_req, res) => {
   const assessments = await Assessment.find()
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ assessmentDate: -1, createdAt: -1 });
 
   const counts = await AssessmentAttempt.aggregate([
-    { $match: { status: 'submitted' } },
     { $group: { _id: '$assessment', count: { $sum: 1 } } },
   ]);
   const countById = new Map(counts.map((row) => [String(row._id), row.count]));
@@ -152,7 +150,9 @@ export const listAssessments = asyncHandler(async (_req, res) => {
 });
 
 export const getAssessment = asyncHandler(async (req, res) => {
-  const assessment = await Assessment.findById(req.params.id).populate('studentClass', 'name');
+  const assessment = await Assessment.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!assessment) throw new ApiError(404, 'Assessment not found');
 
   res.status(200).json({
@@ -162,23 +162,23 @@ export const getAssessment = asyncHandler(async (req, res) => {
 });
 
 export const createAssessment = asyncHandler(async (req, res) => {
-  const { title, description, studentClass, subject, assessmentDate, endDate, questions, sections } =
-    req.body;
+  const { title, description, subject, assessmentDate, endDate, questions, sections } = req.body;
 
   if (!title?.trim()) throw new ApiError(400, 'Title is required');
-  await assertActiveClassId(studentClass);
+  const { studentClasses, studentClass } = await resolveContentClasses(req.body);
   assertAssessmentQuestions(questions);
 
   const normalisedSections = normaliseSections(sections, questions);
   const normalised = normaliseAssessmentQuestions(questions, normalisedSections);
   const heldOn = readAssessmentDate(assessmentDate);
   const ends = readEndDate(endDate);
-  assertEndDateNotBefore(ends, heldOn, 'assessment date');
+  assertEndDateNotBefore(ends, heldOn, 'starting date and time');
 
   const assessment = await Assessment.create({
     title: title.trim(),
     description: (description || '').trim(),
     studentClass,
+    studentClasses,
     subject: (subject || '').trim(),
     assessmentDate: heldOn,
     endDate: ends,
@@ -193,7 +193,10 @@ export const createAssessment = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
-  await assessment.populate('studentClass', 'name');
+  await assessment.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(201).json({
     success: true,
@@ -206,12 +209,8 @@ export const updateAssessment = asyncHandler(async (req, res) => {
   const assessment = await Assessment.findById(req.params.id);
   if (!assessment) throw new ApiError(404, 'Assessment not found');
 
-  if (assessment.isPublished) {
-    throw new ApiError(400, 'Published assessments cannot be edited');
-  }
-
-  const { title, description, studentClass, subject, assessmentDate, endDate, questions, sections } =
-    req.body;
+  const wasPublished = Boolean(assessment.isPublished);
+  const { title, description, subject, assessmentDate, endDate, questions, sections } = req.body;
 
   if (title !== undefined) {
     if (!title.trim()) throw new ApiError(400, 'Title is required');
@@ -219,8 +218,9 @@ export const updateAssessment = asyncHandler(async (req, res) => {
   }
   if (description !== undefined) assessment.description = description.trim();
   if (subject !== undefined) assessment.subject = subject.trim();
-  if (studentClass !== undefined) {
-    await assertActiveClassId(studentClass);
+  if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    assessment.studentClasses = studentClasses;
     assessment.studentClass = studentClass;
   }
   if (assessmentDate !== undefined) {
@@ -230,7 +230,7 @@ export const updateAssessment = asyncHandler(async (req, res) => {
     assessment.endDate = readEndDate(endDate);
   }
   if (assessment.endDate) {
-    assertEndDateNotBefore(assessment.endDate, assessment.assessmentDate, 'assessment date');
+    assertEndDateNotBefore(assessment.endDate, assessment.assessmentDate, 'starting date and time');
   }
   if (req.body.durationMinutes !== undefined) {
     assessment.durationMinutes = readDuration(req.body.durationMinutes);
@@ -270,12 +270,43 @@ export const updateAssessment = asyncHandler(async (req, res) => {
     });
   }
 
+  const willBePublished = Boolean(assessment.isPublished);
+  const unpublishing = wasPublished && !willBePublished;
+  const editingPublished = wasPublished;
+  const needsWipe = unpublishing || editingPublished;
+
+  if (needsWipe) {
+    if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
+      throw new ApiError(
+        400,
+        'Saving or unpublishing a published assessment deletes all attempt data. Confirm to continue.'
+      );
+    }
+    await AssessmentAttempt.deleteMany({ assessment: assessment._id });
+    assessment.resultsReleased = false;
+    assessment.resultsReleasedAt = null;
+  }
+
+  if (willBePublished && !assessment.publishedAt) {
+    assessment.publishedAt = new Date();
+  }
+  if (!willBePublished) {
+    assessment.publishedAt = null;
+  }
+
   await assessment.save();
-  await assessment.populate('studentClass', 'name');
+  await assessment.populate([
+    { path: 'studentClass', select: 'name' },
+    { path: 'studentClasses', select: 'name' },
+  ]);
 
   res.status(200).json({
     success: true,
-    message: 'Assessment updated',
+    message: unpublishing
+      ? 'Assessment unpublished. All attempt data was deleted.'
+      : editingPublished
+        ? 'Assessment updated. Previous attempt data was deleted so corrected answers apply for everyone.'
+        : 'Assessment updated',
     data: { assessment: toAssessmentDetailJson(assessment) },
   });
 });
@@ -295,7 +326,9 @@ export const deleteAssessment = asyncHandler(async (req, res) => {
 });
 
 export const listAssessmentResults = asyncHandler(async (req, res) => {
-  const assessment = await Assessment.findById(req.params.id).populate('studentClass', 'name');
+  const assessment = await Assessment.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!assessment) throw new ApiError(404, 'Assessment not found');
 
   const attempts = await AssessmentAttempt.find({
@@ -343,7 +376,9 @@ export const listAssessmentResults = asyncHandler(async (req, res) => {
 });
 
 export const releaseAssessmentResults = asyncHandler(async (req, res) => {
-  const assessment = await Assessment.findById(req.params.id).populate('studentClass', 'name');
+  const assessment = await Assessment.findById(req.params.id)
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
   if (!assessment) throw new ApiError(404, 'Assessment not found');
 
   const attempts = await AssessmentAttempt.find({

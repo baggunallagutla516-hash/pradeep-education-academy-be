@@ -12,6 +12,7 @@ import {
   toPublicParent,
 } from '../utils/parentAuthResponse.js';
 import { toPublicStudent } from '../utils/authResponse.js';
+import { assertActiveClassIds } from '../utils/schoolClass.js';
 
 const {
   forgotPassword: forgotParentPassword,
@@ -65,6 +66,62 @@ function mapAttemptResult(attempt, assessment, kind) {
   };
 }
 
+export const registerParent = asyncHandler(async (req, res) => {
+  const { fullName, email, phone, password, confirmPassword, classes } = req.body;
+
+  if (!fullName || !email || !phone || !password || !confirmPassword) {
+    throw new ApiError(400, 'Please fill in all required fields');
+  }
+
+  if (password !== confirmPassword) {
+    throw new ApiError(400, 'Passwords do not match');
+  }
+
+  if (String(password).length < 8) {
+    throw new ApiError(400, 'Password must be at least 8 characters');
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedPhone = normalizePhone(phone);
+
+  if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+    throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
+  }
+
+  const classIds = await assertActiveClassIds(classes);
+
+  const existing = await Parent.findOne({
+    $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
+  }).select('_id email phone');
+
+  if (existing) {
+    if (existing.email === normalizedEmail) {
+      throw new ApiError(409, 'A parent account with this email already exists');
+    }
+    throw new ApiError(409, 'A parent account with this phone number already exists');
+  }
+
+  const parent = await Parent.create({
+    fullName: fullName.trim(),
+    email: normalizedEmail,
+    phone: normalizedPhone,
+    password,
+    classes: classIds,
+    isActive: false,
+  });
+
+  await parent.populate('classes', 'name');
+
+  res.status(201).json({
+    success: true,
+    message:
+      'Registration successful. Your account is not active yet. Please contact the admin to activate it and link your children.',
+    data: {
+      parent: toPublicParent(parent),
+    },
+  });
+});
+
 export const loginParent = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -84,6 +141,7 @@ export const loginParent = asyncHandler(async (req, res) => {
 
   parent.lastLoginAt = new Date();
   await parent.save({ validateBeforeSave: false });
+  await parent.populate('classes', 'name');
 
   const token = signToken({ id: parent._id, role: parent.role });
   sendParentAuthResponse(res, parent, token, 200, 'Parent login successful');

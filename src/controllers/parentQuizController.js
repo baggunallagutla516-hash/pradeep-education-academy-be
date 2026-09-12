@@ -3,23 +3,32 @@ import { createQuizParticipantHandlers } from '../utils/quizParticipant.js';
 
 const handlers = createQuizParticipantHandlers('parent');
 
+function visibilityOptions(req) {
+  return { parent: req.parent };
+}
+
 export const listParentQuizzes = asyncHandler(async (req, res) => {
-  const data = await handlers.list(req.parent._id);
+  const data = await handlers.list(req.parent._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const getParentQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.get(req.params.id, req.parent._id);
+  const data = await handlers.get(req.params.id, req.parent._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const startParentQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.start(req.params.id, req.parent._id);
+  const data = await handlers.start(req.params.id, req.parent._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const submitParentQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.submit(req.params.id, req.parent._id, req.body);
+  const data = await handlers.submit(
+    req.params.id,
+    req.parent._id,
+    req.body,
+    visibilityOptions(req)
+  );
   res.status(200).json({
     success: true,
     message: data.message || 'Quiz submitted',
@@ -28,6 +37,6 @@ export const submitParentQuiz = asyncHandler(async (req, res) => {
 });
 
 export const getParentQuizResult = asyncHandler(async (req, res) => {
-  const data = await handlers.result(req.params.id, req.parent._id);
+  const data = await handlers.result(req.params.id, req.parent._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });

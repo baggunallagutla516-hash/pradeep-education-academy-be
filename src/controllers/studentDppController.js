@@ -2,7 +2,11 @@ import { Dpp } from '../models/Dpp.js';
 import { DppAttempt } from '../models/DppAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import {
+  classRefFields,
+  classVisibilityForStudent,
+  contentClassJsonFields,
+} from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
 import {
   buildOptionOrder,
@@ -36,15 +40,13 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 }
 
 function toDppSummaryJson(doc, attempt) {
-  const classFields = classRefFields(doc.studentClass);
   const submitted = attempt?.status === 'submitted';
   const resultsReleased = Boolean(doc.resultsReleased);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     subject: doc.subject,
     practiceDate: doc.practiceDate,
     endDate: doc.endDate || null,
@@ -94,8 +96,10 @@ async function loadPublishedDpp(req) {
   const dpp = await Dpp.findOne({
     _id: req.params.id,
     isPublished: true,
-    studentClass: studentClassId(req.user),
-  }).populate('studentClass', 'name');
+    ...classVisibilityForStudent(studentClassId(req.user)),
+  })
+    .populate('studentClass', 'name')
+    .populate('studentClasses', 'name');
 
   if (!dpp) throw new ApiError(404, 'DPP not found');
   return dpp;
@@ -113,8 +117,12 @@ async function withOptionOrder(attempt, questions) {
 export const listStudentDpps = asyncHandler(async (req, res) => {
   const classId = studentClassId(req.user);
 
-  const dpps = await Dpp.find({ isPublished: true, studentClass: classId })
+  const dpps = await Dpp.find({
+    isPublished: true,
+    ...classVisibilityForStudent(classId),
+  })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ practiceDate: -1, createdAt: -1 });
 
   const attempts = await DppAttempt.find({

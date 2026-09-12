@@ -3,23 +3,32 @@ import { createQuizParticipantHandlers } from '../utils/quizParticipant.js';
 
 const handlers = createQuizParticipantHandlers('educator');
 
+function visibilityOptions(req) {
+  return { educator: req.educator };
+}
+
 export const listEducatorQuizzes = asyncHandler(async (req, res) => {
-  const data = await handlers.list(req.educator._id);
+  const data = await handlers.list(req.educator._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const getEducatorQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.get(req.params.id, req.educator._id);
+  const data = await handlers.get(req.params.id, req.educator._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const startEducatorQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.start(req.params.id, req.educator._id);
+  const data = await handlers.start(req.params.id, req.educator._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });
 
 export const submitEducatorQuiz = asyncHandler(async (req, res) => {
-  const data = await handlers.submit(req.params.id, req.educator._id, req.body);
+  const data = await handlers.submit(
+    req.params.id,
+    req.educator._id,
+    req.body,
+    visibilityOptions(req)
+  );
   res.status(200).json({
     success: true,
     message: data.message || 'Quiz submitted',
@@ -28,6 +37,6 @@ export const submitEducatorQuiz = asyncHandler(async (req, res) => {
 });
 
 export const getEducatorQuizResult = asyncHandler(async (req, res) => {
-  const data = await handlers.result(req.params.id, req.educator._id);
+  const data = await handlers.result(req.params.id, req.educator._id, visibilityOptions(req));
   res.status(200).json({ success: true, data });
 });

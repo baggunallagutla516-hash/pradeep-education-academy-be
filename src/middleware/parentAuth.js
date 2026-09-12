@@ -21,7 +21,7 @@ export const protectParent = asyncHandler(async (req, _res, next) => {
     throw new ApiError(403, 'Parent access required');
   }
 
-  const parent = await Parent.findById(decoded.id);
+  const parent = await Parent.findById(decoded.id).populate('classes', 'name');
 
   if (!parent || !parent.isActive) {
     throw new ApiError(401, 'Parent account not found or inactive');

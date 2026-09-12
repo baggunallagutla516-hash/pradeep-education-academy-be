@@ -1,4 +1,5 @@
 import { getCookieOptions } from './authResponse.js';
+import { toPublicClasses } from './schoolClass.js';
 
 export function toPublicEducator(educator) {
   return {
@@ -7,6 +8,7 @@ export function toPublicEducator(educator) {
     email: educator.email,
     phone: educator.phone,
     schoolName: educator.schoolName || '',
+    classes: toPublicClasses(educator.classes),
     role: educator.role,
     createdAt: educator.createdAt,
     lastLoginAt: educator.lastLoginAt,

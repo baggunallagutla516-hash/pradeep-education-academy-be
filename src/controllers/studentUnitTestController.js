@@ -1,19 +1,21 @@
 import { UnitTest } from '../models/UnitTest.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
-import { classRefFields } from '../utils/schoolClass.js';
+import {
+  classRefFields,
+  classVisibilityForStudent,
+  contentClassJsonFields,
+} from '../utils/schoolClass.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
+  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
 
 function toStudentUnitTestJson(doc) {
-  const classFields = classRefFields(doc.studentClass);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
-    studentClass: classFields.studentClass,
-    studentClassName: classFields.studentClassName,
+    ...contentClassJsonFields(doc),
     unitNumber: doc.unitNumber,
     unitName: doc.unitName,
     coverImageUrl: doc.coverImageUrl,
@@ -38,9 +40,10 @@ export const listStudentUnitTests = asyncHandler(async (req, res) => {
 
   const unitTests = await UnitTest.find({
     isPublished: true,
-    studentClass: classId,
+    ...classVisibilityForStudent(classId),
   })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .sort({ unitNumber: 1, createdAt: -1 })
     .select(PUBLIC_FIELDS);
 
@@ -60,9 +63,10 @@ export const getStudentUnitTest = asyncHandler(async (req, res) => {
   const unitTest = await UnitTest.findOne({
     _id: req.params.id,
     isPublished: true,
-    studentClass: studentClassId(req.user),
+    ...classVisibilityForStudent(studentClassId(req.user)),
   })
     .populate('studentClass', 'name')
+    .populate('studentClasses', 'name')
     .select(PUBLIC_FIELDS);
 
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
