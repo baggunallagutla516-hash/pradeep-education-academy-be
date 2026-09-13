@@ -14,6 +14,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
+import { clearAttemptById } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -302,6 +303,26 @@ export const listDppResults = asyncHandler(async (req, res) => {
         submittedAt: attempt.submittedAt,
       })),
     },
+  });
+});
+
+export const reattemptDpp = asyncHandler(async (req, res) => {
+  const dpp = await Dpp.findById(req.params.id);
+  if (!dpp) throw new ApiError(404, 'DPP not found');
+
+  await clearAttemptById({
+    model: DppAttempt,
+    examField: 'dpp',
+    examId: dpp._id,
+    attemptId: req.params.attemptId,
+    label: 'DPP',
+    startDate: dpp.practiceDate,
+    endDate: dpp.endDate,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant can write this DPP again.',
   });
 });
 

@@ -14,6 +14,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
+import { clearAttemptById } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -310,6 +311,26 @@ export const listQuizResults = asyncHandler(async (req, res) => {
         };
       }),
     },
+  });
+});
+
+export const reattemptQuiz = asyncHandler(async (req, res) => {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) throw new ApiError(404, 'Quiz not found');
+
+  await clearAttemptById({
+    model: QuizAttempt,
+    examField: 'quiz',
+    examId: quiz._id,
+    attemptId: req.params.attemptId,
+    label: 'quiz',
+    startDate: quiz.startDate,
+    endDate: quiz.endDate,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant can write this quiz again.',
   });
 });
 

@@ -15,6 +15,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
+import { clearAttemptById } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -377,6 +378,26 @@ export const listAssessmentResults = asyncHandler(async (req, res) => {
         submittedAt: attempt.submittedAt,
       })),
     },
+  });
+});
+
+export const reattemptAssessment = asyncHandler(async (req, res) => {
+  const assessment = await Assessment.findById(req.params.id);
+  if (!assessment) throw new ApiError(404, 'Assessment not found');
+
+  await clearAttemptById({
+    model: AssessmentAttempt,
+    examField: 'assessment',
+    examId: assessment._id,
+    attemptId: req.params.attemptId,
+    label: 'assessment',
+    startDate: assessment.assessmentDate,
+    endDate: assessment.endDate,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant can write this assessment again.',
   });
 });
 

@@ -63,6 +63,7 @@ import {
   getAssessment,
   listAssessmentResults,
   listAssessments,
+  reattemptAssessment,
   releaseAssessmentResults,
   updateAssessment,
 } from '../controllers/adminAssessmentController.js';
@@ -72,6 +73,7 @@ import {
   getDpp,
   listDppResults,
   listDpps,
+  reattemptDpp,
   releaseDppResults,
   updateDpp,
 } from '../controllers/adminDppController.js';
@@ -81,6 +83,7 @@ import {
   getQuiz,
   listQuizResults,
   listQuizzes,
+  reattemptQuiz,
   releaseQuizResults,
   updateQuiz,
 } from '../controllers/adminQuizController.js';
@@ -90,6 +93,7 @@ import {
   getSlipTest,
   listSlipTestResults,
   listSlipTests,
+  reattemptSlipTest,
   releaseSlipTestResults,
   updateSlipTest,
 } from '../controllers/adminSlipTestController.js';
@@ -211,6 +215,7 @@ router.get('/assessments', protectAdmin, listAssessments);
 router.get('/assessments/:id', protectAdmin, getAssessment);
 router.get('/assessments/:id/results', protectAdmin, listAssessmentResults);
 router.post('/assessments/:id/release-results', protectAdmin, releaseAssessmentResults);
+router.post('/assessments/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptAssessment);
 router.post('/assessments', protectAdmin, createAssessment);
 router.patch('/assessments/:id', protectAdmin, updateAssessment);
 router.delete('/assessments/:id', protectAdmin, deleteAssessment);
@@ -219,6 +224,7 @@ router.get('/dpps', protectAdmin, listDpps);
 router.get('/dpps/:id', protectAdmin, getDpp);
 router.get('/dpps/:id/results', protectAdmin, listDppResults);
 router.post('/dpps/:id/release-results', protectAdmin, releaseDppResults);
+router.post('/dpps/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptDpp);
 router.post('/dpps', protectAdmin, createDpp);
 router.patch('/dpps/:id', protectAdmin, updateDpp);
 router.delete('/dpps/:id', protectAdmin, deleteDpp);
@@ -227,6 +233,7 @@ router.get('/quizzes', protectAdmin, listQuizzes);
 router.get('/quizzes/:id', protectAdmin, getQuiz);
 router.get('/quizzes/:id/results', protectAdmin, listQuizResults);
 router.post('/quizzes/:id/release-results', protectAdmin, releaseQuizResults);
+router.post('/quizzes/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptQuiz);
 router.post('/quizzes', protectAdmin, createQuiz);
 router.patch('/quizzes/:id', protectAdmin, updateQuiz);
 router.delete('/quizzes/:id', protectAdmin, deleteQuiz);
@@ -235,6 +242,7 @@ router.get('/slip-tests', protectAdmin, listSlipTests);
 router.get('/slip-tests/:id', protectAdmin, getSlipTest);
 router.get('/slip-tests/:id/results', protectAdmin, listSlipTestResults);
 router.post('/slip-tests/:id/release-results', protectAdmin, releaseSlipTestResults);
+router.post('/slip-tests/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptSlipTest);
 router.post('/slip-tests', protectAdmin, createSlipTest);
 router.patch('/slip-tests/:id', protectAdmin, updateSlipTest);
 router.delete('/slip-tests/:id', protectAdmin, deleteSlipTest);

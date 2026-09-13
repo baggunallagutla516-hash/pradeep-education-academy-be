@@ -1,15 +1,22 @@
 import mongoose from 'mongoose';
 import { DEFAULT_CLASS_NAMES, SchoolClass } from '../models/SchoolClass.js';
 
+/**
+ * Seed built-in classes only on a fresh database.
+ * Do not recreate names an admin has deleted — that was restoring Class 6–12
+ * after every server restart.
+ */
 export async function ensureDefaultClasses() {
-  const existing = await SchoolClass.find().select('name sortOrder').lean();
-  const byName = new Map(existing.map((c) => [c.name, c]));
+  const count = await SchoolClass.countDocuments();
+  if (count > 0) return;
 
-  for (let i = 0; i < DEFAULT_CLASS_NAMES.length; i += 1) {
-    const name = DEFAULT_CLASS_NAMES[i];
-    if (byName.has(name)) continue;
-    await SchoolClass.create({ name, sortOrder: i, isActive: true });
-  }
+  await SchoolClass.insertMany(
+    DEFAULT_CLASS_NAMES.map((name, i) => ({
+      name,
+      sortOrder: i,
+      isActive: true,
+    }))
+  );
 }
 
 export async function migrateStringClassRefs() {

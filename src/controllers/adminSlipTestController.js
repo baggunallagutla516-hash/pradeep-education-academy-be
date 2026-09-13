@@ -14,6 +14,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
+import { clearAttemptById } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -306,6 +307,26 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
         submittedAt: attempt.submittedAt,
       })),
     },
+  });
+});
+
+export const reattemptSlipTest = asyncHandler(async (req, res) => {
+  const slipTest = await SlipTest.findById(req.params.id);
+  if (!slipTest) throw new ApiError(404, 'Slip test not found');
+
+  await clearAttemptById({
+    model: SlipTestAttempt,
+    examField: 'slipTest',
+    examId: slipTest._id,
+    attemptId: req.params.attemptId,
+    label: 'slip test',
+    startDate: slipTest.startDate,
+    endDate: slipTest.endDate,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Participant can write this slip test again.',
   });
 });
 
