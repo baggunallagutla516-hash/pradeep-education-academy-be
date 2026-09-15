@@ -40,6 +40,7 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
     id: question._id,
     number: index + 1,
     text: question.text,
+    imageUrl: question.imageUrl || '',
     type: question.type,
     marks: question.marks,
     options: toShuffledOptions(question, orderByQuestion),
@@ -162,6 +163,7 @@ function buildResult(slipTest, attempt) {
       return {
         number: index + 1,
         text: question?.text || '',
+        imageUrl: question?.imageUrl || '',
         type: question?.type || 'single',
         marks: question?.marks || 0,
         options: toShuffledOptions(question, orderByQuestion),

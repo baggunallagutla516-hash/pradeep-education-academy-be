@@ -99,3 +99,21 @@ export function assertEndDateNotBefore(endDate, startDate, startLabel = 'start d
     throw new ApiError(400, `Ending date and time cannot be before the ${startLabel}`);
   }
 }
+
+/**
+ * Window + download fields for worksheets / EXAMS / C.E.T.
+ * Outside the window, fileUrl is omitted so clients cannot download.
+ */
+export function downloadWindowFields(doc) {
+  const notYetOpen = isExamNotYetOpen(doc.startDate);
+  const closed = isExamClosed(doc.endDate);
+  const canDownload = !notYetOpen && !closed;
+
+  return {
+    startDate: doc.startDate || null,
+    endDate: doc.endDate || null,
+    isNotYetOpen: notYetOpen,
+    isClosed: closed,
+    fileUrl: canDownload ? doc.fileUrl || '' : '',
+  };
+}

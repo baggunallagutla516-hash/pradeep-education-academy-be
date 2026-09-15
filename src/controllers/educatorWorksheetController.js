@@ -8,18 +8,27 @@ import {
   listClassesByIds,
   toPublicClass,
 } from '../utils/schoolClass.js';
+import { downloadWindowFields } from '../utils/examWindow.js';
+
+const PUBLIC_FIELDS =
+  'title description studentClass studentClasses coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
 
 function toEducatorWorksheetJson(doc) {
+  const window = downloadWindowFields(doc);
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
     coverImageUrl: doc.coverImageUrl,
-    fileUrl: doc.fileUrl,
+    fileUrl: window.fileUrl,
     fileName: doc.fileName,
     fileMimeType: doc.fileMimeType,
     fileSize: doc.fileSize,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    isNotYetOpen: window.isNotYetOpen,
+    isClosed: window.isClosed,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
   };
@@ -39,9 +48,7 @@ export const listEducatorWorksheets = asyncHandler(async (req, res) => {
       .populate('studentClass', 'name')
       .populate('studentClasses', 'name')
       .sort({ publishedAt: -1, createdAt: -1 })
-      .select(
-        'title description studentClass studentClasses coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt'
-      ),
+      .select(PUBLIC_FIELDS),
     listClassesByIds(assignedIds),
   ]);
 
@@ -62,9 +69,7 @@ export const getEducatorWorksheet = asyncHandler(async (req, res) => {
   })
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
-    .select(
-      'title description studentClass studentClasses coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt'
-    );
+    .select(PUBLIC_FIELDS);
 
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
   assertDocInAssignedClasses(worksheet, req.educator, 'Worksheet');

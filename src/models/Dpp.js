@@ -13,9 +13,21 @@ const dppOptionSchema = new mongoose.Schema(
   {
     text: {
       type: String,
-      required: [true, 'Option text is required'],
       trim: true,
       maxlength: [500, 'Option text cannot exceed 500 characters'],
+      default: '',
+    },
+    imageUrl: {
+      type: String,
+      trim: true,
+      maxlength: [1000, 'Option image URL cannot exceed 1000 characters'],
+      default: '',
+    },
+    imageKey: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Option image key cannot exceed 500 characters'],
+      default: '',
     },
   },
   { _id: false }
@@ -39,6 +51,18 @@ const dppQuestionSchema = new mongoose.Schema({
     required: [true, 'Question text is required'],
     trim: true,
     maxlength: [2000, 'Question text cannot exceed 2000 characters'],
+  },
+  imageUrl: {
+    type: String,
+    trim: true,
+    maxlength: [1000, 'Question image URL cannot exceed 1000 characters'],
+    default: '',
+  },
+  imageKey: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Question image key cannot exceed 500 characters'],
+    default: '',
   },
   type: {
     type: String,

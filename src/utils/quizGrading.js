@@ -316,6 +316,26 @@ export function gradeAttempt({ questions = [], answers = [], negativeMarkPerWron
  * Shared shape checks for admin-authored questions. Returns a list of human
  * readable problems so the controller can reject the whole payload at once.
  */
+function optionHasContent(option) {
+  return Boolean(option?.text?.trim() || option?.imageUrl?.trim());
+}
+
+function cleanImageFields(source = {}) {
+  const imageUrl = String(source.imageUrl || '').trim().slice(0, 1000);
+  const imageKey = String(source.imageKey || '').trim().slice(0, 500);
+  return {
+    imageUrl,
+    imageKey: imageUrl ? imageKey : '',
+  };
+}
+
+function normaliseOption(option) {
+  return {
+    text: String(option?.text || '').trim(),
+    ...cleanImageFields(option),
+  };
+}
+
 export function validateQuestions(questions) {
   const errors = [];
 
@@ -368,8 +388,8 @@ export function validateQuestions(questions) {
           `${label}: matrix needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} columns.`
         );
       }
-      if (columns.some((column) => !column?.text?.trim())) {
-        errors.push(`${label}: every matrix column needs text.`);
+      if (columns.some((column) => !optionHasContent(column))) {
+        errors.push(`${label}: every matrix column needs text or an image.`);
       }
       const correctMatrix = Array.isArray(question?.correctMatrix) ? question.correctMatrix : [];
       if (correctMatrix.length !== rows.length) {
@@ -389,8 +409,8 @@ export function validateQuestions(questions) {
     if (options.length < MIN_OPTIONS || options.length > MAX_OPTIONS) {
       errors.push(`${label}: needs between ${MIN_OPTIONS} and ${MAX_OPTIONS} options.`);
     }
-    if (options.some((option) => !option?.text?.trim())) {
-      errors.push(`${label}: every option needs text.`);
+    if (options.some((option) => !optionHasContent(option))) {
+      errors.push(`${label}: every option needs text or an image.`);
     }
 
     const correct = uniqueSorted(question?.correctOptions);
@@ -413,9 +433,12 @@ export function validateQuestions(questions) {
  */
 export function normaliseQuestions(questions = []) {
   return questions.map((question) => {
+    const images = cleanImageFields(question);
+
     if (question.type === 'blank') {
       return {
         text: question.text.trim(),
+        ...images,
         type: 'blank',
         options: [],
         rows: [],
@@ -431,8 +454,9 @@ export function normaliseQuestions(questions = []) {
       const rows = (question.rows || []).map((row) => ({ text: String(row?.text || '').trim() }));
       return {
         text: question.text.trim(),
+        ...images,
         type: 'matrix',
-        options: (question.options || []).map((option) => ({ text: option.text.trim() })),
+        options: (question.options || []).map((option) => normaliseOption(option)),
         rows,
         correctOptions: [],
         correctAnswers: [],
@@ -444,8 +468,9 @@ export function normaliseQuestions(questions = []) {
 
     return {
       text: question.text.trim(),
+      ...images,
       type: question.type,
-      options: question.options.map((option) => ({ text: option.text.trim() })),
+      options: question.options.map((option) => normaliseOption(option)),
       rows: [],
       correctOptions: uniqueSorted(question.correctOptions),
       correctAnswers: [],

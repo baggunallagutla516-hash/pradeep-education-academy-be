@@ -104,7 +104,9 @@ import {
   linkParentStudent,
   listParents,
   setParentActive,
+  softDeleteParent,
   unlinkParentStudent,
+  updateParent,
 } from '../controllers/adminParentController.js';
 import {
   deleteContactQuery,
@@ -127,7 +129,9 @@ import {
   uploadCetAssets,
   uploadUnitTestAssets,
   uploadWorksheetAssets,
+  uploadQuestionImage as uploadQuestionImageMiddleware,
 } from '../middleware/upload.js';
+import { uploadQuestionImage } from '../controllers/adminQuestionImageController.js';
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -180,7 +184,9 @@ router.post('/parents', protectAdmin, createParent);
 router.post('/parents/link', protectAdmin, linkParentStudent);
 router.post('/parents/unlink', protectAdmin, unlinkParentStudent);
 router.get('/parents/:id', protectAdmin, getParent);
+router.patch('/parents/:id', protectAdmin, updateParent);
 router.patch('/parents/:id/active', protectAdmin, setParentActive);
+router.delete('/parents/:id', protectAdmin, softDeleteParent);
 
 router.get('/posts', protectAdmin, listPosts);
 router.get('/posts/:id', protectAdmin, getPost);
@@ -237,6 +243,8 @@ router.post('/quizzes/:id/attempts/:attemptId/reattempt', protectAdmin, reattemp
 router.post('/quizzes', protectAdmin, createQuiz);
 router.patch('/quizzes/:id', protectAdmin, updateQuiz);
 router.delete('/quizzes/:id', protectAdmin, deleteQuiz);
+
+router.post('/question-images', protectAdmin, uploadQuestionImageMiddleware, uploadQuestionImage);
 
 router.get('/slip-tests', protectAdmin, listSlipTests);
 router.get('/slip-tests/:id', protectAdmin, getSlipTest);

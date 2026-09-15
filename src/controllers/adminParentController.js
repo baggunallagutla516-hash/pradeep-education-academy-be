@@ -28,7 +28,7 @@ export const listParents = asyncHandler(async (req, res) => {
   const q = String(req.query.q || '').trim();
   const status = String(req.query.status || '').trim();
 
-  const filter = {};
+  const filter = { deletedAt: null };
   if (q) {
     filter.$or = [
       { fullName: { $regex: q, $options: 'i' } },
@@ -40,7 +40,11 @@ export const listParents = asyncHandler(async (req, res) => {
   if (status === 'inactive') filter.isActive = false;
 
   const [items, total] = await Promise.all([
-    Parent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Parent.find(filter)
+      .populate('classes', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
     Parent.countDocuments(filter),
   ]);
 
@@ -59,17 +63,19 @@ export const listParents = asyncHandler(async (req, res) => {
 });
 
 export const getParent = asyncHandler(async (req, res) => {
-  const parent = await Parent.findById(req.params.id).populate({
-    path: 'studentIds',
-    select: 'fullName email phone studentClass schoolName rollNumber isActive',
-    populate: { path: 'studentClass', select: 'name' },
-  });
+  const parent = await Parent.findOne({ _id: req.params.id, deletedAt: null })
+    .populate('classes', 'name')
+    .populate({
+      path: 'studentIds',
+      select: 'fullName email phone studentClass schoolName rollNumber registrationId isActive deletedAt',
+      populate: { path: 'studentClass', select: 'name' },
+    });
   if (!parent) {
     throw new ApiError(404, 'Parent not found');
   }
 
   const children = (parent.studentIds || [])
-    .filter((s) => s && typeof s === 'object' && s._id)
+    .filter((s) => s && typeof s === 'object' && s._id && !s.deletedAt)
     .map((s) => ({
       ...toPublicStudent({
         ...s.toObject(),
@@ -117,6 +123,7 @@ export const createParent = asyncHandler(async (req, res) => {
   const classIds = await assertActiveClassIds(classes);
 
   const existing = await Parent.findOne({
+    deletedAt: null,
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
 
@@ -146,13 +153,63 @@ export const createParent = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateParent = asyncHandler(async (req, res) => {
+  const { fullName, email, phone, classes } = req.body;
+
+  if (!fullName || !email || !phone) {
+    throw new ApiError(400, 'Please fill in all required fields');
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedPhone = normalizePhone(phone);
+
+  if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+    throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
+  }
+
+  const classIds = await assertActiveClassIds(classes, { required: false });
+
+  const parent = await Parent.findOne({ _id: req.params.id, deletedAt: null });
+  if (!parent) {
+    throw new ApiError(404, 'Parent not found');
+  }
+
+  const conflict = await Parent.findOne({
+    _id: { $ne: parent._id },
+    deletedAt: null,
+    $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
+  }).select('_id email phone');
+
+  if (conflict) {
+    if (conflict.email === normalizedEmail) {
+      throw new ApiError(409, 'A parent account with this email already exists');
+    }
+    throw new ApiError(409, 'A parent account with this phone number already exists');
+  }
+
+  parent.fullName = String(fullName).trim();
+  parent.email = normalizedEmail;
+  parent.phone = normalizedPhone;
+  parent.classes = classIds;
+  await parent.save();
+  await parent.populate('classes', 'name');
+
+  res.status(200).json({
+    success: true,
+    message: 'Parent updated',
+    data: {
+      parent: toAdminParent(parent),
+    },
+  });
+});
+
 export const setParentActive = asyncHandler(async (req, res) => {
   const { isActive } = req.body;
   if (typeof isActive !== 'boolean') {
     throw new ApiError(400, 'isActive boolean is required');
   }
 
-  const parent = await Parent.findById(req.params.id);
+  const parent = await Parent.findOne({ _id: req.params.id, deletedAt: null });
   if (!parent) {
     throw new ApiError(404, 'Parent not found');
   }
@@ -177,8 +234,8 @@ export const linkParentStudent = asyncHandler(async (req, res) => {
   }
 
   const [parent, student] = await Promise.all([
-    Parent.findById(parentId),
-    Student.findById(studentId).populate('studentClass', 'name'),
+    Parent.findOne({ _id: parentId, deletedAt: null }),
+    Student.findOne({ _id: studentId, deletedAt: null }).populate('studentClass', 'name'),
   ]);
 
   if (!parent) {
@@ -214,8 +271,8 @@ export const unlinkParentStudent = asyncHandler(async (req, res) => {
   }
 
   const [parent, student] = await Promise.all([
-    Parent.findById(parentId),
-    Student.findById(studentId).populate('studentClass', 'name'),
+    Parent.findOne({ _id: parentId, deletedAt: null }),
+    Student.findOne({ _id: studentId, deletedAt: null }).populate('studentClass', 'name'),
   ]);
 
   if (!parent) {
@@ -264,7 +321,7 @@ export const addParentToStudent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Phone must be a valid 10-digit Indian mobile number');
   }
 
-  let parent = await Parent.findOne({ email: normalizedEmail });
+  let parent = await Parent.findOne({ email: normalizedEmail, deletedAt: null });
   let created = false;
 
   if (parent) {
@@ -292,7 +349,10 @@ export const addParentToStudent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Password must be at least 8 characters');
   }
 
-  const phoneTaken = await Parent.findOne({ phone: normalizedPhone }).select('_id');
+  const phoneTaken = await Parent.findOne({
+    phone: normalizedPhone,
+    deletedAt: null,
+  }).select('_id');
   if (phoneTaken) {
     throw new ApiError(409, 'A parent account with this phone number already exists');
   }
@@ -325,5 +385,33 @@ export const addParentToStudent = asyncHandler(async (req, res) => {
       created,
       alreadyLinked: false,
     },
+  });
+});
+
+export const softDeleteParent = asyncHandler(async (req, res) => {
+  const parent = await Parent.findOne({ _id: req.params.id, deletedAt: null });
+  if (!parent) {
+    throw new ApiError(404, 'Parent not found');
+  }
+
+  const linkedStudentIds = [...(parent.studentIds || [])];
+  if (linkedStudentIds.length > 0) {
+    const students = await Student.find({
+      _id: { $in: linkedStudentIds },
+      deletedAt: null,
+    });
+    for (const student of students) {
+      await unlinkParentAndStudent(parent, student);
+    }
+  }
+
+  parent.deletedAt = new Date();
+  parent.isActive = false;
+  parent.studentIds = [];
+  await parent.save({ validateBeforeSave: false });
+
+  res.status(200).json({
+    success: true,
+    message: 'Parent deleted',
   });
 });

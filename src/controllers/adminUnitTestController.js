@@ -9,6 +9,7 @@ import {
   keyFromPublicUrl,
   uploadDiskFile,
 } from '../utils/storage.js';
+import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 
 function toUnitTestJson(doc) {
   return {
@@ -23,6 +24,8 @@ function toUnitTestJson(doc) {
     fileName: doc.fileName,
     fileMimeType: doc.fileMimeType,
     fileSize: doc.fileSize,
+    startDate: doc.startDate || null,
+    endDate: doc.endDate || null,
     isPublished: doc.isPublished,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
@@ -99,7 +102,7 @@ export const getUnitTest = asyncHandler(async (req, res) => {
 });
 
 export const createUnitTest = asyncHandler(async (req, res) => {
-  const { title, description, unitNumber, unitName, isPublished } = req.body;
+  const { title, description, unitNumber, unitName, isPublished, startDate, endDate } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -107,6 +110,9 @@ export const createUnitTest = asyncHandler(async (req, res) => {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
     const { studentClasses, studentClass } = await resolveContentClasses(req.body);
     const unit = parseUnitNumber(unitNumber);
+    const starts = readStartDate(startDate, { label: 'starting date and time' });
+    const ends = readEndDate(endDate);
+    assertEndDateNotBefore(ends, starts, 'starting date and time');
 
     if (!file) throw new ApiError(400, 'Question paper file is required');
 
@@ -135,6 +141,8 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       fileName: fileUpload.fileName,
       fileMimeType: fileUpload.fileMimeType,
       fileSize: fileUpload.fileSize,
+      startDate: starts,
+      endDate: ends,
       isPublished: published,
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -161,7 +169,8 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
   const unitTest = await UnitTest.findById(req.params.id);
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
 
-  const { title, description, unitNumber, unitName, isPublished, removeCoverImage } = req.body;
+  const { title, description, unitNumber, unitName, isPublished, removeCoverImage, startDate, endDate } =
+    req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -184,6 +193,11 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
     if (unitName !== undefined) {
       unitTest.unitName = String(unitName).trim();
     }
+    if (startDate !== undefined) {
+      unitTest.startDate = readStartDate(startDate, { label: 'starting date and time' });
+    }
+    if (endDate !== undefined) unitTest.endDate = readEndDate(endDate);
+    assertEndDateNotBefore(unitTest.endDate, unitTest.startDate, 'starting date and time');
 
     if (cover) {
       const prevKey = unitTest.coverImageKey || keyFromPublicUrl(unitTest.coverImageUrl);

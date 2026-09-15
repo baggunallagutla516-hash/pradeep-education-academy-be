@@ -92,6 +92,7 @@ export const registerParent = asyncHandler(async (req, res) => {
   const classIds = await assertActiveClassIds(classes);
 
   const existing = await Parent.findOne({
+    deletedAt: null,
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
 
@@ -130,7 +131,10 @@ export const loginParent = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Email and password are required');
   }
 
-  const parent = await Parent.findOne({ email: email.toLowerCase().trim() }).select('+password');
+  const parent = await Parent.findOne({
+    email: email.toLowerCase().trim(),
+    deletedAt: null,
+  }).select('+password');
 
   if (!parent || !(await parent.comparePassword(password))) {
     throw new ApiError(401, 'Invalid email or password');
@@ -181,6 +185,7 @@ export const updateParentMe = asyncHandler(async (req, res) => {
 
   const conflict = await Parent.findOne({
     _id: { $ne: req.parent._id },
+    deletedAt: null,
     $or: [{ email: normalizedEmail }, { phone: normalizedPhone }],
   }).select('_id email phone');
 

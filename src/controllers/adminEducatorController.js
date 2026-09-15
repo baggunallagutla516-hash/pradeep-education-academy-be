@@ -39,7 +39,11 @@ export const listEducators = asyncHandler(async (req, res) => {
   if (status === 'inactive') filter.isActive = false;
 
   const [items, total] = await Promise.all([
-    Educator.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Educator.find(filter)
+      .populate('classes', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
     Educator.countDocuments(filter),
   ]);
 

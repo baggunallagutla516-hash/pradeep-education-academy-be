@@ -20,8 +20,14 @@ function toQuestionJson(question) {
   return {
     id: question._id,
     text: question.text,
+    imageUrl: question.imageUrl || '',
+    imageKey: question.imageKey || '',
     type: question.type,
-    options: question.options.map((option) => ({ text: option.text })),
+    options: question.options.map((option) => ({
+      text: option.text,
+      imageUrl: option.imageUrl || '',
+      imageKey: option.imageKey || '',
+    })),
     correctOptions: question.correctOptions,
     marks: question.marks,
     explanation: question.explanation,

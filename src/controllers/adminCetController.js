@@ -9,6 +9,7 @@ import {
   keyFromPublicUrl,
   uploadDiskFile,
 } from '../utils/storage.js';
+import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 
 function toCetJson(doc) {
   return {
@@ -23,6 +24,8 @@ function toCetJson(doc) {
     fileName: doc.fileName,
     fileMimeType: doc.fileMimeType,
     fileSize: doc.fileSize,
+    startDate: doc.startDate || null,
+    endDate: doc.endDate || null,
     isPublished: doc.isPublished,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
@@ -99,7 +102,8 @@ export const getCet = asyncHandler(async (req, res) => {
 });
 
 export const createCet = asyncHandler(async (req, res) => {
-  const { title, description, chapterNumber, chapterName, isPublished } = req.body;
+  const { title, description, chapterNumber, chapterName, isPublished, startDate, endDate } =
+    req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -107,6 +111,9 @@ export const createCet = asyncHandler(async (req, res) => {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
     const { studentClasses, studentClass } = await resolveContentClasses(req.body);
     const chapter = parseChapterNumber(chapterNumber);
+    const starts = readStartDate(startDate, { label: 'starting date and time' });
+    const ends = readEndDate(endDate);
+    assertEndDateNotBefore(ends, starts, 'starting date and time');
 
     if (!file) throw new ApiError(400, 'Question paper file is required');
 
@@ -135,6 +142,8 @@ export const createCet = asyncHandler(async (req, res) => {
       fileName: fileUpload.fileName,
       fileMimeType: fileUpload.fileMimeType,
       fileSize: fileUpload.fileSize,
+      startDate: starts,
+      endDate: ends,
       isPublished: published,
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -161,8 +170,16 @@ export const updateCet = asyncHandler(async (req, res) => {
   const cet = await ChapterEndTest.findById(req.params.id);
   if (!cet) throw new ApiError(404, 'C.E.T. not found');
 
-  const { title, description, chapterNumber, chapterName, isPublished, removeCoverImage } =
-    req.body;
+  const {
+    title,
+    description,
+    chapterNumber,
+    chapterName,
+    isPublished,
+    removeCoverImage,
+    startDate,
+    endDate,
+  } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -185,6 +202,11 @@ export const updateCet = asyncHandler(async (req, res) => {
     if (chapterName !== undefined) {
       cet.chapterName = String(chapterName).trim();
     }
+    if (startDate !== undefined) {
+      cet.startDate = readStartDate(startDate, { label: 'starting date and time' });
+    }
+    if (endDate !== undefined) cet.endDate = readEndDate(endDate);
+    assertEndDateNotBefore(cet.endDate, cet.startDate, 'starting date and time');
 
     if (cover) {
       const prevKey = cet.coverImageKey || keyFromPublicUrl(cet.coverImageUrl);

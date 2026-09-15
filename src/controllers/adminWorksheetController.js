@@ -9,6 +9,7 @@ import {
   keyFromPublicUrl,
   uploadDiskFile,
 } from '../utils/storage.js';
+import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 
 function toWorksheetJson(doc) {
   return {
@@ -21,6 +22,8 @@ function toWorksheetJson(doc) {
     fileName: doc.fileName,
     fileMimeType: doc.fileMimeType,
     fileSize: doc.fileSize,
+    startDate: doc.startDate || null,
+    endDate: doc.endDate || null,
     isPublished: doc.isPublished,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
@@ -90,13 +93,16 @@ export const getWorksheet = asyncHandler(async (req, res) => {
 });
 
 export const createWorksheet = asyncHandler(async (req, res) => {
-  const { title, description, isPublished } = req.body;
+  const { title, description, isPublished, startDate, endDate } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
   try {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
     const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    const starts = readStartDate(startDate, { label: 'starting date and time' });
+    const ends = readEndDate(endDate);
+    assertEndDateNotBefore(ends, starts, 'starting date and time');
 
     if (!cover) throw new ApiError(400, 'Cover image is required');
     if (!file) throw new ApiError(400, 'Worksheet file is required');
@@ -124,6 +130,8 @@ export const createWorksheet = asyncHandler(async (req, res) => {
       fileName: fileUpload.fileName,
       fileMimeType: fileUpload.fileMimeType,
       fileSize: fileUpload.fileSize,
+      startDate: starts,
+      endDate: ends,
       isPublished: published,
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -150,7 +158,7 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
   const worksheet = await Worksheet.findById(req.params.id);
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
 
-  const { title, description, isPublished } = req.body;
+  const { title, description, isPublished, startDate, endDate } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
@@ -167,6 +175,11 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
       worksheet.studentClasses = studentClasses;
       worksheet.studentClass = studentClass;
     }
+    if (startDate !== undefined) {
+      worksheet.startDate = readStartDate(startDate, { label: 'starting date and time' });
+    }
+    if (endDate !== undefined) worksheet.endDate = readEndDate(endDate);
+    assertEndDateNotBefore(worksheet.endDate, worksheet.startDate, 'starting date and time');
 
     if (cover) {
       const prevKey = worksheet.coverImageKey || keyFromPublicUrl(worksheet.coverImageUrl);

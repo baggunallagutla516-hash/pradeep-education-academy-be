@@ -114,3 +114,9 @@ export const uploadCetAssets = multer({
   { name: 'coverImage', maxCount: 1 },
   { name: 'file', maxCount: 1 },
 ]);
+
+export const uploadQuestionImage = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('image');

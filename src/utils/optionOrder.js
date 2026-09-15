@@ -68,7 +68,11 @@ export function toShuffledOptions(question, orderByQuestion) {
   const options = question.options || [];
   // Keep matrix column order stable (Likert / scale labels).
   if (question.type === 'matrix') {
-    return options.map((option, index) => ({ index, text: option.text }));
+    return options.map((option, index) => ({
+      index,
+      text: option.text,
+      imageUrl: option.imageUrl || '',
+    }));
   }
 
   const stored = orderByQuestion?.get(String(question._id));
@@ -81,7 +85,11 @@ export function toShuffledOptions(question, orderByQuestion) {
     .map((optionIndex) => {
       const option = options[optionIndex];
       if (!option) return null;
-      return { index: optionIndex, text: option.text };
+      return {
+        index: optionIndex,
+        text: option.text,
+        imageUrl: option.imageUrl || '',
+      };
     })
     .filter(Boolean);
 }

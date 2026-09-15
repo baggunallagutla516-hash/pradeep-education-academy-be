@@ -6,11 +6,13 @@ import {
   classVisibilityForStudent,
   contentClassJsonFields,
 } from '../utils/schoolClass.js';
+import { downloadWindowFields } from '../utils/examWindow.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize publishedAt createdAt';
+  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
 
 function toStudentUnitTestJson(doc) {
+  const window = downloadWindowFields(doc);
   return {
     id: doc._id,
     title: doc.title,
@@ -19,10 +21,14 @@ function toStudentUnitTestJson(doc) {
     unitNumber: doc.unitNumber,
     unitName: doc.unitName,
     coverImageUrl: doc.coverImageUrl,
-    fileUrl: doc.fileUrl,
+    fileUrl: window.fileUrl,
     fileName: doc.fileName,
     fileMimeType: doc.fileMimeType,
     fileSize: doc.fileSize,
+    startDate: window.startDate,
+    endDate: window.endDate,
+    isNotYetOpen: window.isNotYetOpen,
+    isClosed: window.isClosed,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
   };

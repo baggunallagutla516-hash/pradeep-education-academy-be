@@ -59,6 +59,14 @@ const worksheetSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    startDate: {
+      type: Date,
+      default: null,
+    },
+    endDate: {
+      type: Date,
+      default: null,
+    },
     isPublished: {
       type: Boolean,
       default: true,

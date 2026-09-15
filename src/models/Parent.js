@@ -62,6 +62,10 @@ const parentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
     lastLoginAt: {
       type: Date,
       default: null,
