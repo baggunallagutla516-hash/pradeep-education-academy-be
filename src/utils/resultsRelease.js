@@ -6,6 +6,7 @@
 
 export function areAttemptResultsVisible(exam, attempt) {
   if (!attempt || attempt.status !== 'submitted') return false;
+  if (attempt.resultsHidden) return false;
   if (!exam?.resultsReleased) return false;
 
   // Legacy docs released without a timestamp: treat all submitted as visible.
@@ -18,6 +19,7 @@ export function areAttemptResultsVisible(exam, attempt) {
 
 export function isAttemptPendingRelease(exam, attempt) {
   if (!attempt || attempt.status !== 'submitted') return false;
+  if (attempt.resultsHidden) return false;
   return !areAttemptResultsVisible(exam, attempt);
 }
 

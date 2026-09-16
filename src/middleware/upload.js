@@ -120,3 +120,18 @@ export const uploadQuestionImage = multer({
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('image');
+
+export const uploadCarouselAssets = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (!COVER_TYPES.includes(file.mimetype)) {
+      cb(new ApiError(400, 'Image must be JPEG, PNG, WebP, or GIF'));
+      return;
+    }
+    cb(null, true);
+  },
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'studentPhoto', maxCount: 1 },
+]);

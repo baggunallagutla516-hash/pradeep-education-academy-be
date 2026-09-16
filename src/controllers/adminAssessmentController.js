@@ -15,7 +15,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
-import { clearAttemptById } from '../utils/reattempt.js';
+import { clearAttemptById, deleteAttemptById, setAttemptResultsHidden } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -382,6 +382,7 @@ export const listAssessmentResults = asyncHandler(async (req, res) => {
         submitReason: attempt.submitReason,
         fullscreenExitCount: attempt.fullscreenExitCount,
         submittedAt: attempt.submittedAt,
+        resultsHidden: Boolean(attempt.resultsHidden),
       })),
     },
   });
@@ -404,6 +405,45 @@ export const reattemptAssessment = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Participant can write this assessment again.',
+  });
+});
+
+export const setAssessmentAttemptVisibility = asyncHandler(async (req, res) => {
+  const assessment = await Assessment.findById(req.params.id);
+  if (!assessment) throw new ApiError(404, 'Assessment not found');
+
+  const resultsHidden = Boolean(req.body?.resultsHidden);
+  const result = await setAttemptResultsHidden({
+    model: AssessmentAttempt,
+    examField: 'assessment',
+    examId: assessment._id,
+    attemptId: req.params.attemptId,
+    resultsHidden,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: resultsHidden
+      ? 'Result hidden from participants everywhere.'
+      : 'Result is visible again where announced.',
+    data: result,
+  });
+});
+
+export const deleteAssessmentAttempt = asyncHandler(async (req, res) => {
+  const assessment = await Assessment.findById(req.params.id);
+  if (!assessment) throw new ApiError(404, 'Assessment not found');
+
+  await deleteAttemptById({
+    model: AssessmentAttempt,
+    examField: 'assessment',
+    examId: assessment._id,
+    attemptId: req.params.attemptId,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Result deleted everywhere.',
   });
 });
 

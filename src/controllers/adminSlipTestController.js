@@ -14,7 +14,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
-import { clearAttemptById } from '../utils/reattempt.js';
+import { clearAttemptById, deleteAttemptById, setAttemptResultsHidden } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -311,6 +311,7 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
         timeTakenSeconds: attempt.timeTakenSeconds,
         autoSubmitted: attempt.autoSubmitted,
         submittedAt: attempt.submittedAt,
+        resultsHidden: Boolean(attempt.resultsHidden),
       })),
     },
   });
@@ -333,6 +334,45 @@ export const reattemptSlipTest = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Participant can write this slip test again.',
+  });
+});
+
+export const setSlipTestAttemptVisibility = asyncHandler(async (req, res) => {
+  const slipTest = await SlipTest.findById(req.params.id);
+  if (!slipTest) throw new ApiError(404, 'Slip test not found');
+
+  const resultsHidden = Boolean(req.body?.resultsHidden);
+  const result = await setAttemptResultsHidden({
+    model: SlipTestAttempt,
+    examField: 'slipTest',
+    examId: slipTest._id,
+    attemptId: req.params.attemptId,
+    resultsHidden,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: resultsHidden
+      ? 'Result hidden from participants everywhere.'
+      : 'Result is visible again where announced.',
+    data: result,
+  });
+});
+
+export const deleteSlipTestAttempt = asyncHandler(async (req, res) => {
+  const slipTest = await SlipTest.findById(req.params.id);
+  if (!slipTest) throw new ApiError(404, 'Slip test not found');
+
+  await deleteAttemptById({
+    model: SlipTestAttempt,
+    examField: 'slipTest',
+    examId: slipTest._id,
+    attemptId: req.params.attemptId,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Result deleted everywhere.',
   });
 });
 

@@ -111,6 +111,11 @@ const assessmentAttemptSchema = new mongoose.Schema(
     partialCount: { type: Number, default: 0 },
     wrongCount: { type: Number, default: 0 },
     unansweredCount: { type: Number, default: 0 },
+    /** When true, scores stay hidden from participants everywhere (admin still sees them). */
+    resultsHidden: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

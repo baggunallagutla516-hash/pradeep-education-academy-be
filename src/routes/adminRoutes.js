@@ -37,6 +37,12 @@ import {
   updateNews,
 } from '../controllers/adminNewsController.js';
 import {
+  createCarouselSlide,
+  deleteCarouselSlide,
+  listCarouselSlides,
+  updateCarouselSlide,
+} from '../controllers/adminCarouselController.js';
+import {
   createWorksheet,
   deleteWorksheet,
   getWorksheet,
@@ -60,41 +66,49 @@ import {
 import {
   createAssessment,
   deleteAssessment,
+  deleteAssessmentAttempt,
   getAssessment,
   listAssessmentResults,
   listAssessments,
   reattemptAssessment,
   releaseAssessmentResults,
+  setAssessmentAttemptVisibility,
   updateAssessment,
 } from '../controllers/adminAssessmentController.js';
 import {
   createDpp,
   deleteDpp,
+  deleteDppAttempt,
   getDpp,
   listDppResults,
   listDpps,
   reattemptDpp,
   releaseDppResults,
+  setDppAttemptVisibility,
   updateDpp,
 } from '../controllers/adminDppController.js';
 import {
   createQuiz,
   deleteQuiz,
+  deleteQuizAttempt,
   getQuiz,
   listQuizResults,
   listQuizzes,
   reattemptQuiz,
   releaseQuizResults,
+  setQuizAttemptVisibility,
   updateQuiz,
 } from '../controllers/adminQuizController.js';
 import {
   createSlipTest,
   deleteSlipTest,
+  deleteSlipTestAttempt,
   getSlipTest,
   listSlipTestResults,
   listSlipTests,
   reattemptSlipTest,
   releaseSlipTestResults,
+  setSlipTestAttemptVisibility,
   updateSlipTest,
 } from '../controllers/adminSlipTestController.js';
 import {
@@ -129,6 +143,7 @@ import {
   uploadCetAssets,
   uploadUnitTestAssets,
   uploadWorksheetAssets,
+  uploadCarouselAssets,
   uploadQuestionImage as uploadQuestionImageMiddleware,
 } from '../middleware/upload.js';
 import { uploadQuestionImage } from '../controllers/adminQuestionImageController.js';
@@ -199,6 +214,11 @@ router.post('/news', protectAdmin, createNews);
 router.patch('/news/:id', protectAdmin, updateNews);
 router.delete('/news/:id', protectAdmin, deleteNews);
 
+router.get('/carousel', protectAdmin, listCarouselSlides);
+router.post('/carousel', protectAdmin, uploadCarouselAssets, createCarouselSlide);
+router.patch('/carousel/:id', protectAdmin, uploadCarouselAssets, updateCarouselSlide);
+router.delete('/carousel/:id', protectAdmin, deleteCarouselSlide);
+
 router.get('/worksheets', protectAdmin, listWorksheets);
 router.get('/worksheets/:id', protectAdmin, getWorksheet);
 router.post('/worksheets', protectAdmin, uploadWorksheetAssets, createWorksheet);
@@ -222,6 +242,12 @@ router.get('/assessments/:id', protectAdmin, getAssessment);
 router.get('/assessments/:id/results', protectAdmin, listAssessmentResults);
 router.post('/assessments/:id/release-results', protectAdmin, releaseAssessmentResults);
 router.post('/assessments/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptAssessment);
+router.patch(
+  '/assessments/:id/attempts/:attemptId/visibility',
+  protectAdmin,
+  setAssessmentAttemptVisibility
+);
+router.delete('/assessments/:id/attempts/:attemptId', protectAdmin, deleteAssessmentAttempt);
 router.post('/assessments', protectAdmin, createAssessment);
 router.patch('/assessments/:id', protectAdmin, updateAssessment);
 router.delete('/assessments/:id', protectAdmin, deleteAssessment);
@@ -231,6 +257,8 @@ router.get('/dpps/:id', protectAdmin, getDpp);
 router.get('/dpps/:id/results', protectAdmin, listDppResults);
 router.post('/dpps/:id/release-results', protectAdmin, releaseDppResults);
 router.post('/dpps/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptDpp);
+router.patch('/dpps/:id/attempts/:attemptId/visibility', protectAdmin, setDppAttemptVisibility);
+router.delete('/dpps/:id/attempts/:attemptId', protectAdmin, deleteDppAttempt);
 router.post('/dpps', protectAdmin, createDpp);
 router.patch('/dpps/:id', protectAdmin, updateDpp);
 router.delete('/dpps/:id', protectAdmin, deleteDpp);
@@ -240,6 +268,8 @@ router.get('/quizzes/:id', protectAdmin, getQuiz);
 router.get('/quizzes/:id/results', protectAdmin, listQuizResults);
 router.post('/quizzes/:id/release-results', protectAdmin, releaseQuizResults);
 router.post('/quizzes/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptQuiz);
+router.patch('/quizzes/:id/attempts/:attemptId/visibility', protectAdmin, setQuizAttemptVisibility);
+router.delete('/quizzes/:id/attempts/:attemptId', protectAdmin, deleteQuizAttempt);
 router.post('/quizzes', protectAdmin, createQuiz);
 router.patch('/quizzes/:id', protectAdmin, updateQuiz);
 router.delete('/quizzes/:id', protectAdmin, deleteQuiz);
@@ -251,6 +281,12 @@ router.get('/slip-tests/:id', protectAdmin, getSlipTest);
 router.get('/slip-tests/:id/results', protectAdmin, listSlipTestResults);
 router.post('/slip-tests/:id/release-results', protectAdmin, releaseSlipTestResults);
 router.post('/slip-tests/:id/attempts/:attemptId/reattempt', protectAdmin, reattemptSlipTest);
+router.patch(
+  '/slip-tests/:id/attempts/:attemptId/visibility',
+  protectAdmin,
+  setSlipTestAttemptVisibility
+);
+router.delete('/slip-tests/:id/attempts/:attemptId', protectAdmin, deleteSlipTestAttempt);
 router.post('/slip-tests', protectAdmin, createSlipTest);
 router.patch('/slip-tests/:id', protectAdmin, updateSlipTest);
 router.delete('/slip-tests/:id', protectAdmin, deleteSlipTest);

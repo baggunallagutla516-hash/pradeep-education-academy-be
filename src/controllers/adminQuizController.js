@@ -14,7 +14,7 @@ import {
   participantResultFields,
   resultUrlForRole,
 } from '../utils/examParticipant.js';
-import { clearAttemptById } from '../utils/reattempt.js';
+import { clearAttemptById, deleteAttemptById, setAttemptResultsHidden } from '../utils/reattempt.js';
 
 function toQuestionJson(question) {
   return {
@@ -314,6 +314,7 @@ export const listQuizResults = asyncHandler(async (req, res) => {
           timeTakenSeconds: attempt.timeTakenSeconds,
           autoSubmitted: attempt.autoSubmitted,
           submittedAt: attempt.submittedAt,
+          resultsHidden: Boolean(attempt.resultsHidden),
         };
       }),
     },
@@ -337,6 +338,45 @@ export const reattemptQuiz = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Participant can write this quiz again.',
+  });
+});
+
+export const setQuizAttemptVisibility = asyncHandler(async (req, res) => {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) throw new ApiError(404, 'Quiz not found');
+
+  const resultsHidden = Boolean(req.body?.resultsHidden);
+  const result = await setAttemptResultsHidden({
+    model: QuizAttempt,
+    examField: 'quiz',
+    examId: quiz._id,
+    attemptId: req.params.attemptId,
+    resultsHidden,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: resultsHidden
+      ? 'Result hidden from participants everywhere.'
+      : 'Result is visible again where announced.',
+    data: result,
+  });
+});
+
+export const deleteQuizAttempt = asyncHandler(async (req, res) => {
+  const quiz = await Quiz.findById(req.params.id);
+  if (!quiz) throw new ApiError(404, 'Quiz not found');
+
+  await deleteAttemptById({
+    model: QuizAttempt,
+    examField: 'quiz',
+    examId: quiz._id,
+    attemptId: req.params.attemptId,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Result deleted everywhere.',
   });
 });
 
