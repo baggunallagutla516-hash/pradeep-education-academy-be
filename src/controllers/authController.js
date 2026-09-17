@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Student } from '../models/Student.js';
 import { Parent } from '../models/Parent.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -16,6 +17,29 @@ import {
   toPublicClass,
 } from '../utils/schoolClass.js';
 import { generateUniqueRegistrationId } from '../utils/registrationId.js';
+import {
+  assertStorageConfigured,
+  buildObjectKey,
+  deleteObject,
+  uploadDiskFile,
+} from '../utils/storage.js';
+
+async function uploadProfilePhotoFile(file) {
+  if (!file?.path) return null;
+  assertStorageConfigured();
+  const key = buildObjectKey('profile-photos', file.originalname);
+  const url = await uploadDiskFile({
+    filePath: file.path,
+    contentType: file.mimetype,
+    key,
+  });
+  return { url, key };
+}
+
+async function removeTempUpload(file) {
+  if (!file?.path) return;
+  await fs.promises.unlink(file.path).catch(() => {});
+}
 
 const {
   forgotPassword,
@@ -46,14 +70,25 @@ export const register = asyncHandler(async (req, res) => {
   } = req.body;
 
   if (!fullName || !email || !phone || !studentClass || !schoolName?.trim() || !rollNumber?.trim() || !password || !confirmPassword) {
+    await removeTempUpload(req.file);
     throw new ApiError(400, 'Please fill in all required fields');
   }
 
+  if (!req.file) {
+    throw new ApiError(400, 'Please upload a recent photo or take a photo');
+  }
+
   if (password !== confirmPassword) {
+    await removeTempUpload(req.file);
     throw new ApiError(400, 'Passwords do not match');
   }
 
-  await assertActiveClassId(studentClass);
+  try {
+    await assertActiveClassId(studentClass);
+  } catch (err) {
+    await removeTempUpload(req.file);
+    throw err;
+  }
 
   const normalizedPhone = normalizePhone(phone);
 
@@ -62,24 +97,41 @@ export const register = asyncHandler(async (req, res) => {
   }).select('_id email phone');
 
   if (existing) {
+    await removeTempUpload(req.file);
     if (existing.email === email.toLowerCase().trim()) {
       throw new ApiError(409, 'An account with this email already exists');
     }
     throw new ApiError(409, 'An account with this phone number already exists');
   }
 
+  let uploaded;
+  try {
+    uploaded = await uploadProfilePhotoFile(req.file);
+  } catch (err) {
+    await removeTempUpload(req.file);
+    throw err;
+  }
+
   const registrationId = await generateUniqueRegistrationId();
 
-  const created = await Student.create({
-    fullName: fullName.trim(),
-    email: email.toLowerCase().trim(),
-    phone: normalizedPhone,
-    studentClass,
-    schoolName: schoolName.trim(),
-    rollNumber: rollNumber.trim(),
-    registrationId,
-    password,
-  });
+  let created;
+  try {
+    created = await Student.create({
+      fullName: fullName.trim(),
+      email: email.toLowerCase().trim(),
+      phone: normalizedPhone,
+      studentClass,
+      schoolName: schoolName.trim(),
+      rollNumber: rollNumber.trim(),
+      registrationId,
+      password,
+      profilePhotoUrl: uploaded.url,
+      profilePhotoKey: uploaded.key,
+    });
+  } catch (err) {
+    if (uploaded?.key) await deleteObject(uploaded.key).catch(() => {});
+    throw err;
+  }
 
   const student = await loadStudentPublic(created._id);
 
@@ -89,6 +141,45 @@ export const register = asyncHandler(async (req, res) => {
       'Registration successful. Your account is not active yet. Please contact the admin to activate it.',
     data: {
       student: toPublicStudent(student),
+    },
+  });
+});
+
+export const uploadMyPhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Please upload a recent photo or take a photo');
+  }
+
+  const student = await Student.findById(req.user._id);
+  if (!student) {
+    await removeTempUpload(req.file);
+    throw new ApiError(404, 'Student not found');
+  }
+
+  let uploaded;
+  try {
+    uploaded = await uploadProfilePhotoFile(req.file);
+  } catch (err) {
+    await removeTempUpload(req.file);
+    throw err;
+  }
+
+  const previousKey = student.profilePhotoKey;
+  student.profilePhotoUrl = uploaded.url;
+  student.profilePhotoKey = uploaded.key;
+  await student.save({ validateBeforeSave: false });
+
+  if (previousKey && previousKey !== uploaded.key) {
+    await deleteObject(previousKey).catch(() => {});
+  }
+
+  const populated = await loadStudentPublic(student._id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile photo updated successfully',
+    data: {
+      student: toPublicStudent(populated),
     },
   });
 });

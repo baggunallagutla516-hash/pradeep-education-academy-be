@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -15,6 +16,12 @@ import {
   resultUrlForRole,
 } from '../utils/examParticipant.js';
 import { clearAttemptById, deleteAttemptById, setAttemptResultsHidden } from '../utils/reattempt.js';
+import {
+  buildObjectKey,
+  deleteObject,
+  keyFromPublicUrl,
+  uploadDiskFile,
+} from '../utils/storage.js';
 
 function toQuestionJson(question) {
   return {
@@ -38,8 +45,10 @@ function toQuestionJson(question) {
 }
 
 function toSlipTestJson(doc, extra = {}) {
+  const contentMode = doc.contentMode === 'file' ? 'file' : 'exam';
   return {
     id: doc._id,
+    contentMode,
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
@@ -54,8 +63,13 @@ function toSlipTestJson(doc, extra = {}) {
     showAnswersAfterSubmit: doc.showAnswersAfterSubmit,
     resultsReleased: Boolean(doc.resultsReleased),
     resultsReleasedAt: doc.resultsReleasedAt || null,
-    questionCount: doc.questions.length,
+    questionCount: doc.questions?.length || 0,
     totalMarks: doc.totalMarks,
+    coverImageUrl: doc.coverImageUrl || '',
+    fileUrl: doc.fileUrl || '',
+    fileName: doc.fileName || '',
+    fileMimeType: doc.fileMimeType || '',
+    fileSize: doc.fileSize || 0,
     isPublished: doc.isPublished,
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
@@ -64,12 +78,23 @@ function toSlipTestJson(doc, extra = {}) {
 }
 
 function toSlipTestDetailJson(doc) {
-  return toSlipTestJson(doc, { questions: doc.questions.map(toQuestionJson) });
+  return toSlipTestJson(doc, {
+    questions: (doc.questions || []).map(toQuestionJson),
+  });
 }
 
 function parseBoolean(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
   return value === true || value === 'true';
+}
+
+function readContentMode(value, fallback = 'exam') {
+  if (value === undefined || value === null || value === '') return fallback;
+  const mode = String(value).trim().toLowerCase();
+  if (mode !== 'exam' && mode !== 'file') {
+    throw new ApiError(400, 'Content mode must be exam or file');
+  }
+  return mode;
 }
 
 function assertValidQuestions(questions) {
@@ -85,6 +110,45 @@ function readDuration(value) {
     throw new ApiError(400, 'Duration must be between 1 and 300 minutes');
   }
   return duration;
+}
+
+async function unlinkTemp(file) {
+  if (file?.path) {
+    await fs.promises.unlink(file.path).catch(() => {});
+  }
+}
+
+async function uploadCover(file) {
+  if (!file?.path) throw new ApiError(400, 'Cover image is required');
+  const key = buildObjectKey('slip-tests/covers', file.originalname);
+  const url = await uploadDiskFile({
+    filePath: file.path,
+    contentType: file.mimetype,
+    key,
+  });
+  return { url, key };
+}
+
+async function uploadFile(file) {
+  if (!file?.path) throw new ApiError(400, 'Slip test file is required');
+  const key = buildObjectKey('slip-tests/files', file.originalname);
+  const url = await uploadDiskFile({
+    filePath: file.path,
+    contentType: file.mimetype,
+    key,
+  });
+  return {
+    url,
+    key,
+    fileName: file.originalname,
+    fileMimeType: file.mimetype,
+    fileSize: file.size,
+  };
+}
+
+async function deleteStoredAssets(doc) {
+  await deleteObject(doc.coverImageKey || keyFromPublicUrl(doc.coverImageUrl));
+  await deleteObject(doc.fileKey || keyFromPublicUrl(doc.fileUrl));
 }
 
 export const listSlipTests = asyncHandler(async (req, res) => {
@@ -121,48 +185,95 @@ export const getSlipTest = asyncHandler(async (req, res) => {
 });
 
 export const createSlipTest = asyncHandler(async (req, res) => {
+  const contentMode = readContentMode(req.body.contentMode, 'exam');
   const { title, description, subject, chapter, topic, startDate, endDate, questions } = req.body;
+  const cover = req.files?.coverImage?.[0];
+  const file = req.files?.file?.[0];
 
-  if (!title?.trim()) throw new ApiError(400, 'Title is required');
-  if (!chapter?.trim()) throw new ApiError(400, 'Chapter is required');
-  const { studentClasses, studentClass } = await resolveContentClasses(req.body);
-  assertValidQuestions(questions);
+  try {
+    if (!title?.trim()) throw new ApiError(400, 'Title is required');
+    if (!chapter?.trim()) throw new ApiError(400, 'Chapter is required');
+    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+    const starts = readStartDate(startDate, { label: 'starting date and time' });
+    const ends = readEndDate(endDate);
+    assertEndDateNotBefore(ends, starts, 'starting date and time');
 
-  const normalised = normaliseQuestions(questions);
-  const starts = readStartDate(startDate, { label: 'starting date and time' });
-  const ends = readEndDate(endDate);
-  assertEndDateNotBefore(ends, starts, 'starting date and time');
+    const base = {
+      contentMode,
+      title: title.trim(),
+      description: (description || '').trim(),
+      studentClass,
+      studentClasses,
+      subject: (subject || '').trim(),
+      chapter: chapter.trim(),
+      topic: (topic || '').trim(),
+      startDate: starts,
+      endDate: ends,
+      isPublished: parseBoolean(req.body.isPublished, false),
+      createdBy: req.admin._id,
+    };
 
-  const slipTest = await SlipTest.create({
-    title: title.trim(),
-    description: (description || '').trim(),
-    studentClass,
-    studentClasses,
-    subject: (subject || '').trim(),
-    chapter: chapter.trim(),
-    topic: (topic || '').trim(),
-    startDate: starts,
-    endDate: ends,
-    durationMinutes: readDuration(req.body.durationMinutes),
-    negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
-    allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
-    showAnswersAfterSubmit: parseBoolean(req.body.showAnswersAfterSubmit, true),
-    questions: normalised,
-    totalMarks: totalMarksFor(normalised),
-    isPublished: parseBoolean(req.body.isPublished, false),
-    createdBy: req.admin._id,
-  });
+    let slipTest;
 
-  await slipTest.populate([
-    { path: 'studentClass', select: 'name' },
-    { path: 'studentClasses', select: 'name' },
-  ]);
+    if (contentMode === 'file') {
+      if (!cover) throw new ApiError(400, 'Cover image is required');
+      if (!file) throw new ApiError(400, 'Slip test file is required');
 
-  res.status(201).json({
-    success: true,
-    message: 'Slip test created',
-    data: { slipTest: toSlipTestDetailJson(slipTest) },
-  });
+      const coverUpload = await uploadCover(cover);
+      let fileUpload;
+      try {
+        fileUpload = await uploadFile(file);
+      } catch (err) {
+        await deleteObject(coverUpload.key);
+        throw err;
+      }
+
+      slipTest = await SlipTest.create({
+        ...base,
+        durationMinutes: null,
+        negativeMarkPerWrong: 0,
+        allowPartialCredit: true,
+        showAnswersAfterSubmit: false,
+        questions: [],
+        totalMarks: 0,
+        coverImageUrl: coverUpload.url,
+        coverImageKey: coverUpload.key,
+        fileUrl: fileUpload.url,
+        fileKey: fileUpload.key,
+        fileName: fileUpload.fileName,
+        fileMimeType: fileUpload.fileMimeType,
+        fileSize: fileUpload.fileSize,
+        publishedAt: base.isPublished ? new Date() : null,
+      });
+    } else {
+      assertValidQuestions(questions);
+      const normalised = normaliseQuestions(questions);
+      slipTest = await SlipTest.create({
+        ...base,
+        durationMinutes: readDuration(req.body.durationMinutes),
+        negativeMarkPerWrong: Number(req.body.negativeMarkPerWrong) || 0,
+        allowPartialCredit: parseBoolean(req.body.allowPartialCredit, true),
+        showAnswersAfterSubmit: parseBoolean(req.body.showAnswersAfterSubmit, true),
+        questions: normalised,
+        totalMarks: totalMarksFor(normalised),
+      });
+    }
+
+    await slipTest.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: 'Slip test created',
+      data: { slipTest: toSlipTestDetailJson(slipTest) },
+    });
+  } catch (err) {
+    await unlinkTemp(cover);
+    await unlinkTemp(file);
+    throw err;
+  }
 });
 
 export const updateSlipTest = asyncHandler(async (req, res) => {
@@ -170,90 +281,128 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
   const wasPublished = Boolean(slipTest.isPublished);
+  const contentMode = slipTest.contentMode === 'file' ? 'file' : 'exam';
   const { title, description, subject, chapter, topic, startDate, endDate, questions } = req.body;
+  const cover = req.files?.coverImage?.[0];
+  const file = req.files?.file?.[0];
 
-  if (title !== undefined) {
-    if (!title.trim()) throw new ApiError(400, 'Title is required');
-    slipTest.title = title.trim();
-  }
-  if (description !== undefined) slipTest.description = description.trim();
-  if (subject !== undefined) slipTest.subject = subject.trim();
-  if (chapter !== undefined) {
-    if (!chapter.trim()) throw new ApiError(400, 'Chapter is required');
-    slipTest.chapter = chapter.trim();
-  }
-  if (topic !== undefined) slipTest.topic = topic.trim();
-  if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
-    const { studentClasses, studentClass } = await resolveContentClasses(req.body);
-    slipTest.studentClasses = studentClasses;
-    slipTest.studentClass = studentClass;
-  }
-  if (startDate !== undefined) {
-    slipTest.startDate = readStartDate(startDate, { label: 'starting date and time' });
-  }
-  if (endDate !== undefined) slipTest.endDate = readEndDate(endDate);
-  assertEndDateNotBefore(slipTest.endDate, slipTest.startDate, 'starting date and time');
-  if (req.body.durationMinutes !== undefined) {
-    slipTest.durationMinutes = readDuration(req.body.durationMinutes);
-  }
-  if (req.body.negativeMarkPerWrong !== undefined) {
-    slipTest.negativeMarkPerWrong = Number(req.body.negativeMarkPerWrong) || 0;
-  }
-  if (req.body.allowPartialCredit !== undefined) {
-    slipTest.allowPartialCredit = parseBoolean(req.body.allowPartialCredit, true);
-  }
-  if (req.body.showAnswersAfterSubmit !== undefined) {
-    slipTest.showAnswersAfterSubmit = parseBoolean(req.body.showAnswersAfterSubmit, true);
-  }
-  if (req.body.isPublished !== undefined) {
-    slipTest.isPublished = parseBoolean(req.body.isPublished, slipTest.isPublished);
-  }
-  if (questions !== undefined) {
-    assertValidQuestions(questions);
-    const normalised = normaliseQuestions(questions);
-    slipTest.questions = normalised;
-    slipTest.totalMarks = totalMarksFor(normalised);
+  if (req.body.contentMode !== undefined && readContentMode(req.body.contentMode, contentMode) !== contentMode) {
+    throw new ApiError(400, 'Cannot change content mode after a slip test is created');
   }
 
-  const willBePublished = Boolean(slipTest.isPublished);
-  const unpublishing = wasPublished && !willBePublished;
-  const editingPublished = wasPublished;
-  const needsWipe = unpublishing || editingPublished;
-
-  if (needsWipe) {
-    if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
-      throw new ApiError(
-        400,
-        'Saving or unpublishing a published slip test deletes all attempt data. Confirm to continue.'
-      );
+  try {
+    if (title !== undefined) {
+      if (!String(title).trim()) throw new ApiError(400, 'Title is required');
+      slipTest.title = String(title).trim();
     }
-    await SlipTestAttempt.deleteMany({ slipTest: slipTest._id });
-    slipTest.resultsReleased = false;
-    slipTest.resultsReleasedAt = null;
-  }
+    if (description !== undefined) slipTest.description = String(description).trim();
+    if (subject !== undefined) slipTest.subject = String(subject).trim();
+    if (chapter !== undefined) {
+      if (!String(chapter).trim()) throw new ApiError(400, 'Chapter is required');
+      slipTest.chapter = String(chapter).trim();
+    }
+    if (topic !== undefined) slipTest.topic = String(topic).trim();
+    if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
+      const { studentClasses, studentClass } = await resolveContentClasses(req.body);
+      slipTest.studentClasses = studentClasses;
+      slipTest.studentClass = studentClass;
+    }
+    if (startDate !== undefined) {
+      slipTest.startDate = readStartDate(startDate, { label: 'starting date and time' });
+    }
+    if (endDate !== undefined) slipTest.endDate = readEndDate(endDate);
+    assertEndDateNotBefore(slipTest.endDate, slipTest.startDate, 'starting date and time');
+    if (req.body.isPublished !== undefined) {
+      slipTest.isPublished = parseBoolean(req.body.isPublished, slipTest.isPublished);
+    }
 
-  if (willBePublished && !slipTest.publishedAt) {
-    slipTest.publishedAt = new Date();
-  }
-  if (!willBePublished) {
-    slipTest.publishedAt = null;
-  }
+    if (contentMode === 'file') {
+      if (cover) {
+        const prevKey = slipTest.coverImageKey || keyFromPublicUrl(slipTest.coverImageUrl);
+        const coverUpload = await uploadCover(cover);
+        slipTest.coverImageUrl = coverUpload.url;
+        slipTest.coverImageKey = coverUpload.key;
+        await deleteObject(prevKey);
+      }
+      if (file) {
+        const prevKey = slipTest.fileKey || keyFromPublicUrl(slipTest.fileUrl);
+        const fileUpload = await uploadFile(file);
+        slipTest.fileUrl = fileUpload.url;
+        slipTest.fileKey = fileUpload.key;
+        slipTest.fileName = fileUpload.fileName;
+        slipTest.fileMimeType = fileUpload.fileMimeType;
+        slipTest.fileSize = fileUpload.fileSize;
+        await deleteObject(prevKey);
+      }
+      if (!slipTest.coverImageUrl || !slipTest.fileUrl) {
+        throw new ApiError(400, 'Cover image and file are required for file slip tests');
+      }
+    } else {
+      if (req.body.durationMinutes !== undefined) {
+        slipTest.durationMinutes = readDuration(req.body.durationMinutes);
+      }
+      if (req.body.negativeMarkPerWrong !== undefined) {
+        slipTest.negativeMarkPerWrong = Number(req.body.negativeMarkPerWrong) || 0;
+      }
+      if (req.body.allowPartialCredit !== undefined) {
+        slipTest.allowPartialCredit = parseBoolean(req.body.allowPartialCredit, true);
+      }
+      if (req.body.showAnswersAfterSubmit !== undefined) {
+        slipTest.showAnswersAfterSubmit = parseBoolean(req.body.showAnswersAfterSubmit, true);
+      }
+      if (questions !== undefined) {
+        assertValidQuestions(questions);
+        const normalised = normaliseQuestions(questions);
+        slipTest.questions = normalised;
+        slipTest.totalMarks = totalMarksFor(normalised);
+      }
+    }
 
-  await slipTest.save();
-  await slipTest.populate([
-    { path: 'studentClass', select: 'name' },
-    { path: 'studentClasses', select: 'name' },
-  ]);
+    const willBePublished = Boolean(slipTest.isPublished);
+    const unpublishing = wasPublished && !willBePublished;
+    const editingPublished = wasPublished;
+    const needsWipe = contentMode === 'exam' && (unpublishing || editingPublished);
 
-  res.status(200).json({
-    success: true,
-    message: unpublishing
-      ? 'Slip test unpublished. All attempt data was deleted.'
-      : editingPublished
-        ? 'Slip test updated. Previous attempt data was deleted so corrected answers apply for everyone.'
-        : 'Slip test updated',
-    data: { slipTest: toSlipTestDetailJson(slipTest) },
-  });
+    if (needsWipe) {
+      if (!parseBoolean(req.body.confirmWipeAttempts, false)) {
+        throw new ApiError(
+          400,
+          'Saving or unpublishing a published slip test deletes all attempt data. Confirm to continue.'
+        );
+      }
+      await SlipTestAttempt.deleteMany({ slipTest: slipTest._id });
+      slipTest.resultsReleased = false;
+      slipTest.resultsReleasedAt = null;
+    }
+
+    if (willBePublished && !slipTest.publishedAt) {
+      slipTest.publishedAt = new Date();
+    }
+    if (!willBePublished) {
+      slipTest.publishedAt = null;
+    }
+
+    await slipTest.save();
+    await slipTest.populate([
+      { path: 'studentClass', select: 'name' },
+      { path: 'studentClasses', select: 'name' },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message:
+        contentMode === 'exam' && unpublishing
+          ? 'Slip test unpublished. All attempt data was deleted.'
+          : contentMode === 'exam' && editingPublished
+            ? 'Slip test updated. Previous attempt data was deleted so corrected answers apply for everyone.'
+            : 'Slip test updated',
+      data: { slipTest: toSlipTestDetailJson(slipTest) },
+    });
+  } catch (err) {
+    await unlinkTemp(cover);
+    await unlinkTemp(file);
+    throw err;
+  }
 });
 
 export const deleteSlipTest = asyncHandler(async (req, res) => {
@@ -261,6 +410,7 @@ export const deleteSlipTest = asyncHandler(async (req, res) => {
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
 
   await SlipTestAttempt.deleteMany({ slipTest: slipTest._id });
+  await deleteStoredAssets(slipTest);
   await slipTest.deleteOne();
 
   res.status(200).json({
@@ -275,6 +425,9 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'File slip tests do not have online results');
+  }
 
   const attempts = await SlipTestAttempt.find({ slipTest: slipTest._id, status: 'submitted' }).sort({
     percentage: -1,
@@ -320,6 +473,9 @@ export const listSlipTestResults = asyncHandler(async (req, res) => {
 export const reattemptSlipTest = asyncHandler(async (req, res) => {
   const slipTest = await SlipTest.findById(req.params.id);
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'File slip tests do not support reattempts');
+  }
 
   await clearAttemptById({
     model: SlipTestAttempt,
@@ -340,6 +496,9 @@ export const reattemptSlipTest = asyncHandler(async (req, res) => {
 export const setSlipTestAttemptVisibility = asyncHandler(async (req, res) => {
   const slipTest = await SlipTest.findById(req.params.id);
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'File slip tests do not have attempt results');
+  }
 
   const resultsHidden = Boolean(req.body?.resultsHidden);
   const result = await setAttemptResultsHidden({
@@ -362,6 +521,9 @@ export const setSlipTestAttemptVisibility = asyncHandler(async (req, res) => {
 export const deleteSlipTestAttempt = asyncHandler(async (req, res) => {
   const slipTest = await SlipTest.findById(req.params.id);
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'File slip tests do not have attempt results');
+  }
 
   await deleteAttemptById({
     model: SlipTestAttempt,
@@ -381,6 +543,9 @@ export const releaseSlipTestResults = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'File slip tests do not have online results');
+  }
 
   const attempts = await SlipTestAttempt.find({
     slipTest: slipTest._id,

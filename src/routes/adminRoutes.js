@@ -15,6 +15,7 @@ import {
   setStudentActive,
   softDeleteStudent,
   updateStudent,
+  uploadStudentPhoto,
 } from '../controllers/adminStudentController.js';
 import {
   listEducators,
@@ -142,8 +143,10 @@ import {
   uploadPoster,
   uploadCetAssets,
   uploadUnitTestAssets,
+  uploadSlipTestAssets,
   uploadWorksheetAssets,
   uploadCarouselAssets,
+  uploadProfilePhoto,
   uploadQuestionImage as uploadQuestionImageMiddleware,
 } from '../middleware/upload.js';
 import { uploadQuestionImage } from '../controllers/adminQuestionImageController.js';
@@ -184,6 +187,7 @@ router.get('/dashboard', protectAdmin, getDashboardStats);
 router.get('/students', protectAdmin, listStudents);
 router.get('/students/:id', protectAdmin, getStudent);
 router.patch('/students/:id', protectAdmin, updateStudent);
+router.post('/students/:id/photo', protectAdmin, uploadProfilePhoto, uploadStudentPhoto);
 router.patch('/students/:id/active', protectAdmin, setStudentActive);
 router.delete('/students/:id', protectAdmin, softDeleteStudent);
 router.post('/students/:id/parents', protectAdmin, addParentToStudent);
@@ -287,8 +291,8 @@ router.patch(
   setSlipTestAttemptVisibility
 );
 router.delete('/slip-tests/:id/attempts/:attemptId', protectAdmin, deleteSlipTestAttempt);
-router.post('/slip-tests', protectAdmin, createSlipTest);
-router.patch('/slip-tests/:id', protectAdmin, updateSlipTest);
+router.post('/slip-tests', protectAdmin, uploadSlipTestAssets, createSlipTest);
+router.patch('/slip-tests/:id', protectAdmin, uploadSlipTestAssets, updateSlipTest);
 router.delete('/slip-tests/:id', protectAdmin, deleteSlipTest);
 
 router.get('/contact-queries', protectAdmin, listContactQueries);

@@ -60,6 +60,16 @@ const studentSchema = new mongoose.Schema(
       sparse: true,
       match: [/^PDPEDU\d{4}$/, 'Registration ID must be PDPEDU followed by 4 digits'],
     },
+    profilePhotoUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    profilePhotoKey: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     password: {
       type: String,
       required: [true, 'Password is required'],

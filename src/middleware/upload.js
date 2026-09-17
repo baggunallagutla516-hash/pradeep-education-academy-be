@@ -106,6 +106,15 @@ export const uploadUnitTestAssets = multer({
   { name: 'file', maxCount: 1 },
 ]);
 
+export const uploadSlipTestAssets = multer({
+  storage,
+  fileFilter: resourceFileFilter,
+  limits: { fileSize: 25 * 1024 * 1024 },
+}).fields([
+  { name: 'coverImage', maxCount: 1 },
+  { name: 'file', maxCount: 1 },
+]);
+
 export const uploadCetAssets = multer({
   storage,
   fileFilter: resourceFileFilter,
@@ -135,3 +144,9 @@ export const uploadCarouselAssets = multer({
   { name: 'image', maxCount: 1 },
   { name: 'studentPhoto', maxCount: 1 },
 ]);
+
+export const uploadProfilePhoto = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('profilePhoto');

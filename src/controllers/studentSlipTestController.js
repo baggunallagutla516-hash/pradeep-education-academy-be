@@ -43,10 +43,12 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
 }
 
 function toSlipTestSummaryJson(doc, attempt, viewerClassId = null) {
+  const contentMode = doc.contentMode === 'file' ? 'file' : 'exam';
   const submitted = attempt?.status === 'submitted';
   const resultsVisible = areAttemptResultsVisible(doc, attempt);
   return {
     id: doc._id,
+    contentMode,
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc, { viewerClassId }),
@@ -60,8 +62,13 @@ function toSlipTestSummaryJson(doc, attempt, viewerClassId = null) {
     durationMinutes: doc.durationMinutes,
     negativeMarkPerWrong: doc.negativeMarkPerWrong,
     allowPartialCredit: doc.allowPartialCredit,
-    questionCount: doc.questions.length,
+    questionCount: doc.questions?.length || 0,
     totalMarks: doc.totalMarks,
+    coverImageUrl: doc.coverImageUrl || '',
+    fileUrl: contentMode === 'file' ? doc.fileUrl || '' : '',
+    fileName: contentMode === 'file' ? doc.fileName || '' : '',
+    fileMimeType: contentMode === 'file' ? doc.fileMimeType || '' : '',
+    fileSize: contentMode === 'file' ? doc.fileSize || 0 : 0,
     attemptStatus: attempt ? attempt.status : 'not_started',
     resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
@@ -168,6 +175,10 @@ export const getStudentSlipTest = asyncHandler(async (req, res) => {
 export const startStudentSlipTest = asyncHandler(async (req, res) => {
   const slipTest = await loadPublishedSlipTest(req);
 
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'This slip test is a downloadable file, not an online exam');
+  }
+
   if (slipTest.questions.length === 0) {
     throw new ApiError(400, 'This slip test has no questions yet');
   }
@@ -226,6 +237,11 @@ export const startStudentSlipTest = asyncHandler(async (req, res) => {
 
 export const submitStudentSlipTest = asyncHandler(async (req, res) => {
   const slipTest = await loadPublishedSlipTest(req);
+
+  if (slipTest.contentMode === 'file') {
+    throw new ApiError(400, 'This slip test is a downloadable file, not an online exam');
+  }
+
   const attempt = await SlipTestAttempt.findOne({ slipTest: slipTest._id, student: req.user._id });
 
   if (!attempt) throw new ApiError(400, 'Start the slip test before submitting');

@@ -67,7 +67,7 @@ export const getParent = asyncHandler(async (req, res) => {
     .populate('classes', 'name')
     .populate({
       path: 'studentIds',
-      select: 'fullName email phone studentClass schoolName rollNumber registrationId isActive deletedAt',
+      select: 'fullName email phone studentClass schoolName rollNumber registrationId profilePhotoUrl isActive deletedAt',
       populate: { path: 'studentClass', select: 'name' },
     });
   if (!parent) {

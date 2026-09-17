@@ -23,6 +23,7 @@ export function toPublicStudent(student) {
     schoolName: student.schoolName,
     rollNumber: student.rollNumber,
     registrationId: student.registrationId || null,
+    profilePhotoUrl: student.profilePhotoUrl || '',
     role: student.role,
     parentIds: (student.parentIds || []).map((id) => String(id)),
     createdAt: student.createdAt,

@@ -31,7 +31,7 @@ export function errorHandler(err, _req, res, _next) {
     statusCode = 400;
     if (err.code === 'LIMIT_FILE_SIZE') {
       message =
-        'File is too large. Max 25MB for worksheets and unit tests, 5MB for post images.';
+        'File is too large. Max 5MB for photos and images, 25MB for worksheets and unit tests.';
     } else {
       message = err.message;
     }

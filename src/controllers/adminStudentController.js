@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Student } from '../models/Student.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -6,9 +7,32 @@ import { env } from '../config/env.js';
 import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { assertActiveClassId } from '../utils/schoolClass.js';
 import { ensureStudentRegistrationId } from '../utils/registrationId.js';
+import {
+  assertStorageConfigured,
+  buildObjectKey,
+  deleteObject,
+  uploadDiskFile,
+} from '../utils/storage.js';
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '').slice(-10);
+}
+
+async function uploadProfilePhotoFile(file) {
+  if (!file?.path) return null;
+  assertStorageConfigured();
+  const key = buildObjectKey('profile-photos', file.originalname);
+  const url = await uploadDiskFile({
+    filePath: file.path,
+    contentType: file.mimetype,
+    key,
+  });
+  return { url, key };
+}
+
+async function removeTempUpload(file) {
+  if (!file?.path) return;
+  await fs.promises.unlink(file.path).catch(() => {});
 }
 
 async function loadStudentWithParents(studentId) {
@@ -143,6 +167,43 @@ export const updateStudent = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Student updated',
+    data: { student: populated },
+  });
+});
+
+export const uploadStudentPhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    throw new ApiError(400, 'Please upload a recent photo or take a photo');
+  }
+
+  const student = await Student.findOne({ _id: req.params.id, deletedAt: null });
+  if (!student) {
+    await removeTempUpload(req.file);
+    throw new ApiError(404, 'Student not found');
+  }
+
+  let uploaded;
+  try {
+    uploaded = await uploadProfilePhotoFile(req.file);
+  } catch (err) {
+    await removeTempUpload(req.file);
+    throw err;
+  }
+
+  const previousKey = student.profilePhotoKey;
+  student.profilePhotoUrl = uploaded.url;
+  student.profilePhotoKey = uploaded.key;
+  await student.save({ validateBeforeSave: false });
+
+  if (previousKey && previousKey !== uploaded.key) {
+    await deleteObject(previousKey).catch(() => {});
+  }
+
+  const populated = await loadStudentWithParents(student._id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile photo updated',
     data: { student: populated },
   });
 });

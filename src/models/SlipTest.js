@@ -158,6 +158,14 @@ const slipTestSchema = new mongoose.Schema(
         ref: 'SchoolClass',
       },
     ],
+    contentMode: {
+      type: String,
+      enum: {
+        values: ['exam', 'file'],
+        message: 'Content mode must be exam or file',
+      },
+      default: 'exam',
+    },
     subject: {
       type: String,
       trim: true,
@@ -186,7 +194,7 @@ const slipTestSchema = new mongoose.Schema(
     },
     durationMinutes: {
       type: Number,
-      required: [true, 'Duration is required'],
+      default: null,
       min: [1, 'Duration must be at least 1 minute'],
       max: [300, 'Duration cannot exceed 300 minutes'],
     },
@@ -220,6 +228,40 @@ const slipTestSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    coverImageUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    coverImageKey: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileKey: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileMimeType: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileSize: {
+      type: Number,
+      default: 0,
+    },
     isPublished: {
       type: Boolean,
       default: false,
@@ -239,5 +281,6 @@ const slipTestSchema = new mongoose.Schema(
 
 slipTestSchema.index({ studentClass: 1, isPublished: 1, chapter: 1 });
 slipTestSchema.index({ studentClasses: 1, isPublished: 1, chapter: 1 });
+slipTestSchema.index({ contentMode: 1, isPublished: 1, publishedAt: -1 });
 
 export const SlipTest = mongoose.model('SlipTest', slipTestSchema);

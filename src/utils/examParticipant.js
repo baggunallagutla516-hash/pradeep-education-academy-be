@@ -17,7 +17,7 @@ export const ROLE_LABEL = {
   parent: 'Parent',
 };
 
-const PARTICIPANT_SELECT = 'fullName email rollNumber isActive deletedAt';
+const PARTICIPANT_SELECT = 'fullName email rollNumber profilePhotoUrl isActive deletedAt';
 
 /** Identity fields for an attempt. `student` is only set for actual students. */
 export function participantIdentity(role, id) {
@@ -110,6 +110,7 @@ export function participantResultFields(attempt, person) {
     studentName: person?.fullName || `Deleted ${label.toLowerCase()}`,
     studentEmail: person?.email || '',
     rollNumber: person?.rollNumber || '',
+    profilePhotoUrl: person?.profilePhotoUrl || '',
   };
 }
 
