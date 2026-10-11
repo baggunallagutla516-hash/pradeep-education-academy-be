@@ -9,6 +9,8 @@ import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/q
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 import {
   loadParticipantsByRole,
   participantKey,
@@ -53,6 +55,7 @@ function toSlipTestJson(doc, extra = {}) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     subject: doc.subject,
+    ...contentAccessJson(doc),
     chapter: doc.chapter,
     topic: doc.topic,
     startDate: doc.startDate || null,
@@ -157,6 +160,10 @@ export const listSlipTests = asyncHandler(async (req, res) => {
     .populate('studentClasses', 'name')
     .sort({ createdAt: -1 });
 
+  for (const doc of slipTests) {
+    await ensureContentJoinCode(doc);
+  }
+
   const counts = await SlipTestAttempt.aggregate([
     { $group: { _id: '$slipTest', count: { $sum: 1 } } },
   ]);
@@ -177,6 +184,7 @@ export const getSlipTest = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!slipTest) throw new ApiError(404, 'Slip test not found');
+  await ensureContentJoinCode(slipTest);
 
   res.status(200).json({
     success: true,
@@ -210,6 +218,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: parseBoolean(req.body.isPublished, false),
+      accessMode: readAccessMode(req.body.accessMode),
       createdBy: req.admin._id,
     };
 
@@ -259,6 +268,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
       });
     }
 
+    await ensureContentJoinCode(slipTest);
     await slipTest.populate([
       { path: 'studentClass', select: 'name' },
       { path: 'studentClasses', select: 'name' },
@@ -382,6 +392,10 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
       slipTest.publishedAt = null;
     }
 
+    if (req.body.accessMode !== undefined) {
+      slipTest.accessMode = readAccessMode(req.body.accessMode, slipTest.accessMode);
+    }
+    await ensureContentJoinCode(slipTest, { save: false });
     await slipTest.save();
     await slipTest.populate([
       { path: 'studentClass', select: 'name' },

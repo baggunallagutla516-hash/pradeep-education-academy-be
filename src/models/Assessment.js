@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { MAX_OPTIONS, MIN_OPTIONS, MIN_MATRIX_ROWS, MAX_MATRIX_ROWS } from '../utils/quizGrading.js';
+import { contentAccessPaths } from '../utils/contentAccess.js';
 
 export const ASSESSMENT_QUESTION_TYPES = ['single', 'multiple', 'matrix'];
 export const MAX_FULLSCREEN_EXITS = 3;
@@ -226,11 +227,16 @@ const assessmentSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...contentAccessPaths(),
   },
   { timestamps: true }
 );
 
 assessmentSchema.index({ studentClass: 1, isPublished: 1, assessmentDate: -1 });
 assessmentSchema.index({ studentClasses: 1, isPublished: 1, assessmentDate: -1 });
+assessmentSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 
 export const Assessment = mongoose.model('Assessment', assessmentSchema);

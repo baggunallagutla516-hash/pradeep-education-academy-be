@@ -15,7 +15,7 @@ import {
   round2,
   selectionsMatch,
 } from '../utils/classroomScoring.js';
-import { makeUniqueJoinCode } from '../utils/joinCode.js';
+import { makeUniqueJoinCode, findPublishedJoin } from '../utils/joinCode.js';
 
 const DEFAULT_GROUP_NAMES = ['Group 1', 'Group 2', 'Group 3', 'Group 4'];
 
@@ -781,25 +781,21 @@ export const passStudentClassroom = asyncHandler(async (req, res) => {
 /** Public lookup so a QR scan or a typed code can open a quiz. */
 export const lookupClassroomCode = asyncHandler(async (req, res) => {
   const code = normaliseRoomCode(req.params.code);
-
-  const individual = await Quiz.findOne({
-    joinCode: code,
-    isPublished: true,
-    playMode: { $ne: 'classroom' },
-  }).select('title subject joinCode accessMode');
-  if (individual) {
-    if ((individual.accessMode || 'both') === 'list') {
-      throw new ApiError(404, 'Students start this quiz from the quiz list.');
-    }
+  const match = await findPublishedJoin(code);
+  if (match) {
+    const { doc, kind } = match;
     res.status(200).json({
       success: true,
       data: {
-        quizId: individual._id,
-        title: individual.title,
-        subject: individual.subject || '',
+        id: doc._id,
+        quizId: doc._id,
+        title: doc.title,
+        subject: doc.subject || '',
         status: 'open',
-        code: individual.joinCode,
-        playMode: 'individual',
+        code: doc.joinCode,
+        playMode: kind === 'quiz' ? 'individual' : kind,
+        kind,
+        contentMode: doc.contentMode || '',
       },
     });
     return;
@@ -826,6 +822,8 @@ export const lookupClassroomCode = asyncHandler(async (req, res) => {
       status: session.status,
       code: session.code,
       playMode: 'classroom',
+      kind: 'classroom',
+      contentMode: '',
     },
   });
 });

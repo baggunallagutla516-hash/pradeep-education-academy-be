@@ -10,6 +10,8 @@ import {
   uploadDiskFile,
 } from '../utils/storage.js';
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 
 function toCetJson(doc) {
   return {
@@ -19,6 +21,7 @@ function toCetJson(doc) {
     ...contentClassJsonFields(doc),
     chapterNumber: doc.chapterNumber,
     chapterName: doc.chapterName,
+    ...contentAccessJson(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -84,6 +87,9 @@ export const listCets = asyncHandler(async (_req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
     .sort({ studentClass: 1, chapterNumber: 1, createdAt: -1 });
+  for (const doc of cets) {
+    await ensureContentJoinCode(doc);
+  }
   res.status(200).json({
     success: true,
     data: { cets: cets.map(toCetJson) },
@@ -95,6 +101,7 @@ export const getCet = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!cet) throw new ApiError(404, 'C.E.T. not found');
+  await ensureContentJoinCode(cet);
   res.status(200).json({
     success: true,
     data: { cet: toCetJson(cet) },
@@ -145,10 +152,12 @@ export const createCet = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
     });
 
+    await ensureContentJoinCode(cet);
     await cet.populate([
       { path: 'studentClass', select: 'name' },
       { path: 'studentClasses', select: 'name' },
@@ -243,6 +252,10 @@ export const updateCet = asyncHandler(async (req, res) => {
       cet.isPublished = published;
     }
 
+    if (req.body.accessMode !== undefined) {
+      cet.accessMode = readAccessMode(req.body.accessMode, cet.accessMode);
+    }
+    await ensureContentJoinCode(cet, { save: false });
     await cet.save();
     await cet.populate([
       { path: 'studentClass', select: 'name' },

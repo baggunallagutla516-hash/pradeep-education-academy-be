@@ -10,6 +10,8 @@ import {
   uploadDiskFile,
 } from '../utils/storage.js';
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 
 function toUnitTestJson(doc) {
   return {
@@ -19,6 +21,7 @@ function toUnitTestJson(doc) {
     ...contentClassJsonFields(doc),
     unitNumber: doc.unitNumber,
     unitName: doc.unitName,
+    ...contentAccessJson(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -84,6 +87,9 @@ export const listUnitTests = asyncHandler(async (_req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
     .sort({ studentClass: 1, unitNumber: 1, createdAt: -1 });
+  for (const doc of unitTests) {
+    await ensureContentJoinCode(doc);
+  }
   res.status(200).json({
     success: true,
     data: { unitTests: unitTests.map(toUnitTestJson) },
@@ -95,6 +101,7 @@ export const getUnitTest = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
+  await ensureContentJoinCode(unitTest);
   res.status(200).json({
     success: true,
     data: { unitTest: toUnitTestJson(unitTest) },
@@ -144,10 +151,12 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
     });
 
+    await ensureContentJoinCode(unitTest);
     await unitTest.populate([
       { path: 'studentClass', select: 'name' },
       { path: 'studentClasses', select: 'name' },
@@ -234,6 +243,10 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
       unitTest.isPublished = published;
     }
 
+    if (req.body.accessMode !== undefined) {
+      unitTest.accessMode = readAccessMode(req.body.accessMode, unitTest.accessMode);
+    }
+    await ensureContentJoinCode(unitTest, { save: false });
     await unitTest.save();
     await unitTest.populate([
       { path: 'studentClass', select: 'name' },

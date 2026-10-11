@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { contentAccessPaths } from '../utils/contentAccess.js';
 
 const unitTestSchema = new mongoose.Schema(
   {
@@ -92,11 +93,16 @@ const unitTestSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...contentAccessPaths(),
   },
   { timestamps: true }
 );
 
 unitTestSchema.index({ studentClass: 1, isPublished: 1, unitNumber: 1 });
 unitTestSchema.index({ studentClasses: 1, isPublished: 1, unitNumber: 1 });
+unitTestSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 
 export const UnitTest = mongoose.model('UnitTest', unitTestSchema);

@@ -9,6 +9,8 @@ import { env } from '../config/env.js';
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
 import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 import {
   loadParticipantsByRole,
   participantKey,
@@ -86,6 +88,7 @@ function toAssessmentJson(doc, extra = {}) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     subject: doc.subject,
+    ...contentAccessJson(doc),
     assessmentDate: doc.assessmentDate,
     endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
@@ -148,6 +151,10 @@ export const listAssessments = asyncHandler(async (_req, res) => {
     .populate('studentClasses', 'name')
     .sort({ assessmentDate: -1, createdAt: -1 });
 
+  for (const doc of assessments) {
+    await ensureContentJoinCode(doc);
+  }
+
   const counts = await AssessmentAttempt.aggregate([
     { $group: { _id: '$assessment', count: { $sum: 1 } } },
   ]);
@@ -168,6 +175,7 @@ export const getAssessment = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!assessment) throw new ApiError(404, 'Assessment not found');
+  await ensureContentJoinCode(assessment);
 
   res.status(200).json({
     success: true,
@@ -204,9 +212,11 @@ export const createAssessment = asyncHandler(async (req, res) => {
     questions: normalised,
     totalMarks: totalMarksFor(normalised),
     isPublished: parseBoolean(req.body.isPublished, false),
+    accessMode: readAccessMode(req.body.accessMode),
     createdBy: req.admin._id,
   });
 
+  await ensureContentJoinCode(assessment);
   await assessment.populate([
     { path: 'studentClass', select: 'name' },
     { path: 'studentClasses', select: 'name' },
@@ -308,6 +318,10 @@ export const updateAssessment = asyncHandler(async (req, res) => {
     assessment.publishedAt = null;
   }
 
+  if (req.body.accessMode !== undefined) {
+    assessment.accessMode = readAccessMode(req.body.accessMode, assessment.accessMode);
+  }
+  await ensureContentJoinCode(assessment, { save: false });
   await assessment.save();
   await assessment.populate([
     { path: 'studentClass', select: 'name' },

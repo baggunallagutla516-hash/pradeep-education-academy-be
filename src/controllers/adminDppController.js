@@ -8,6 +8,8 @@ import { normaliseQuestions, totalMarksFor, validateQuestions } from '../utils/q
 import { sendAssessmentResultsReleasedEmail } from '../utils/mailer.js';
 import { assertEndDateNotBefore, readEndDate } from '../utils/examWindow.js';
 import { countPendingReleaseAttempts, pendingReleaseAttempts } from '../utils/resultsRelease.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 import {
   loadParticipantsByRole,
   participantKey,
@@ -44,6 +46,7 @@ function toDppJson(doc, extra = {}) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     subject: doc.subject,
+    ...contentAccessJson(doc),
     practiceDate: doc.practiceDate,
     endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
@@ -99,6 +102,10 @@ export const listDpps = asyncHandler(async (req, res) => {
     .populate('studentClasses', 'name')
     .sort({ practiceDate: -1, createdAt: -1 });
 
+  for (const doc of dpps) {
+    await ensureContentJoinCode(doc);
+  }
+
   const counts = await DppAttempt.aggregate([
     { $group: { _id: '$dpp', count: { $sum: 1 } } },
   ]);
@@ -117,6 +124,7 @@ export const getDpp = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!dpp) throw new ApiError(404, 'DPP not found');
+  await ensureContentJoinCode(dpp);
 
   res.status(200).json({
     success: true,
@@ -151,9 +159,11 @@ export const createDpp = asyncHandler(async (req, res) => {
     questions: normalised,
     totalMarks: totalMarksFor(normalised),
     isPublished: parseBoolean(req.body.isPublished, false),
+    accessMode: readAccessMode(req.body.accessMode),
     createdBy: req.admin._id,
   });
 
+  await ensureContentJoinCode(dpp);
   await dpp.populate([
     { path: 'studentClass', select: 'name' },
     { path: 'studentClasses', select: 'name' },
@@ -235,6 +245,10 @@ export const updateDpp = asyncHandler(async (req, res) => {
     dpp.publishedAt = null;
   }
 
+  if (req.body.accessMode !== undefined) {
+    dpp.accessMode = readAccessMode(req.body.accessMode, dpp.accessMode);
+  }
+  await ensureContentJoinCode(dpp, { save: false });
   await dpp.save();
   await dpp.populate([
     { path: 'studentClass', select: 'name' },

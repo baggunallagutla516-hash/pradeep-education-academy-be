@@ -7,9 +7,10 @@ import {
   contentClassJsonFields,
 } from '../utils/schoolClass.js';
 import { downloadWindowFields } from '../utils/examWindow.js';
+import { includeInStudentList } from '../utils/contentAccess.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
+  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt accessMode';
 
 function toStudentUnitTestJson(doc) {
   const window = downloadWindowFields(doc);
@@ -60,7 +61,7 @@ export const listStudentUnitTests = asyncHandler(async (req, res) => {
     data: {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
-      unitTests: unitTests.map(toStudentUnitTestJson),
+      unitTests: unitTests.filter((doc) => includeInStudentList(doc)).map(toStudentUnitTestJson),
     },
   });
 });

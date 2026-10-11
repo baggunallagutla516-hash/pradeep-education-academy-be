@@ -10,6 +10,8 @@ import {
   uploadDiskFile,
 } from '../utils/storage.js';
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
+import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
+import { ensureContentJoinCode } from '../utils/joinCode.js';
 
 function toWorksheetJson(doc) {
   return {
@@ -17,6 +19,7 @@ function toWorksheetJson(doc) {
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
+    ...contentAccessJson(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -75,6 +78,9 @@ export const listWorksheets = asyncHandler(async (_req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
     .sort({ publishedAt: -1, createdAt: -1 });
+  for (const doc of worksheets) {
+    await ensureContentJoinCode(doc);
+  }
   res.status(200).json({
     success: true,
     data: { worksheets: worksheets.map(toWorksheetJson) },
@@ -86,6 +92,7 @@ export const getWorksheet = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
+  await ensureContentJoinCode(worksheet);
   res.status(200).json({
     success: true,
     data: { worksheet: toWorksheetJson(worksheet) },
@@ -133,10 +140,12 @@ export const createWorksheet = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
     });
 
+    await ensureContentJoinCode(worksheet);
     await worksheet.populate([
       { path: 'studentClass', select: 'name' },
       { path: 'studentClasses', select: 'name' },
@@ -211,6 +220,10 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
       worksheet.isPublished = published;
     }
 
+    if (req.body.accessMode !== undefined) {
+      worksheet.accessMode = readAccessMode(req.body.accessMode, worksheet.accessMode);
+    }
+    await ensureContentJoinCode(worksheet, { save: false });
     await worksheet.save();
     await worksheet.populate([
       { path: 'studentClass', select: 'name' },

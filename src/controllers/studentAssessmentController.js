@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { classVisibilityForStudent, classRefFields, toPublicClassList } from '../utils/schoolClass.js';
 import { gradeAttempt, resultTier } from '../utils/quizGrading.js';
+import { includeInStudentList } from '../utils/contentAccess.js';
 import {
   buildOptionOrder,
   ensureAttemptOptionOrder,
@@ -175,7 +176,9 @@ export const listStudentAssessments = asyncHandler(async (req, res) => {
     data: {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
-      assessments: assessments.map((doc) =>
+      assessments: assessments
+        .filter((doc) => includeInStudentList(doc, attemptById.has(String(doc._id))))
+        .map((doc) =>
         toAssessmentSummaryJson(doc, attemptById.get(String(doc._id)), studentClassId(req.user))
       ),
     },

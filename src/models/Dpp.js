@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { contentAccessPaths } from '../utils/contentAccess.js';
 import {
   MAX_BLANK_ANSWERS,
   MAX_OPTIONS,
@@ -221,11 +222,16 @@ const dppSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...contentAccessPaths(),
   },
   { timestamps: true }
 );
 
 dppSchema.index({ studentClass: 1, isPublished: 1, practiceDate: -1 });
 dppSchema.index({ studentClasses: 1, isPublished: 1, practiceDate: -1 });
+dppSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 
 export const Dpp = mongoose.model('Dpp', dppSchema);

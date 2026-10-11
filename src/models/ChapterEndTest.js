@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { contentAccessPaths } from '../utils/contentAccess.js';
 
 const chapterEndTestSchema = new mongoose.Schema(
   {
@@ -92,11 +93,16 @@ const chapterEndTestSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...contentAccessPaths(),
   },
   { timestamps: true }
 );
 
 chapterEndTestSchema.index({ studentClass: 1, isPublished: 1, chapterNumber: 1 });
 chapterEndTestSchema.index({ studentClasses: 1, isPublished: 1, chapterNumber: 1 });
+chapterEndTestSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 
 export const ChapterEndTest = mongoose.model('ChapterEndTest', chapterEndTestSchema);

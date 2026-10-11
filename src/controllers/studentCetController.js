@@ -7,9 +7,10 @@ import {
   contentClassJsonFields,
 } from '../utils/schoolClass.js';
 import { downloadWindowFields } from '../utils/examWindow.js';
+import { includeInStudentList } from '../utils/contentAccess.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
+  'title description studentClass studentClasses chapterNumber chapterName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt accessMode';
 
 function toStudentCetJson(doc) {
   const window = downloadWindowFields(doc);
@@ -60,7 +61,7 @@ export const listStudentCets = asyncHandler(async (req, res) => {
     data: {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
-      cets: cets.map(toStudentCetJson),
+      cets: cets.filter((doc) => includeInStudentList(doc)).map(toStudentCetJson),
     },
   });
 });

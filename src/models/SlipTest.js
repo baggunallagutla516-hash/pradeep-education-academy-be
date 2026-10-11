@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { contentAccessPaths } from '../utils/contentAccess.js';
 import {
   MAX_BLANK_ANSWERS,
   MAX_OPTIONS,
@@ -275,6 +276,7 @@ const slipTestSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...contentAccessPaths(),
   },
   { timestamps: true }
 );
@@ -282,5 +284,9 @@ const slipTestSchema = new mongoose.Schema(
 slipTestSchema.index({ studentClass: 1, isPublished: 1, chapter: 1 });
 slipTestSchema.index({ studentClasses: 1, isPublished: 1, chapter: 1 });
 slipTestSchema.index({ contentMode: 1, isPublished: 1, publishedAt: -1 });
+slipTestSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 
 export const SlipTest = mongoose.model('SlipTest', slipTestSchema);

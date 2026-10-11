@@ -17,6 +17,7 @@ import {
 } from '../utils/optionOrder.js';
 import { assertExamWindow, isExamClosed, isExamNotYetOpen } from '../utils/examWindow.js';
 import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
+import { includeInStudentList } from '../utils/contentAccess.js';
 
 function studentClassId(user) {
   const value = user.studentClass;
@@ -151,7 +152,14 @@ export const listStudentSlipTests = asyncHandler(async (req, res) => {
     data: {
       studentClass: classFields.studentClass,
       studentClassName: classFields.studentClassName,
-      slipTests: slipTests.map((doc) =>
+      slipTests: slipTests
+        .filter((doc) =>
+          includeInStudentList(
+            doc,
+            doc.contentMode !== 'file' && attemptByTest.has(String(doc._id))
+          )
+        )
+        .map((doc) =>
         toSlipTestSummaryJson(doc, attemptByTest.get(String(doc._id)), classId)
       ),
     },
