@@ -9,6 +9,7 @@ import {
   getPublicQuizIntro,
   listPublicCarousel,
 } from '../controllers/publicCarouselController.js';
+import { lookupClassroomCode } from '../controllers/classroomQuizController.js';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.get('/posts/:id', getPublishedPost);
 router.get('/news', listActiveNews);
 router.get('/site', getPublicSiteSettings);
 router.get('/carousel', listPublicCarousel);
+router.get('/classroom-code/:code', lookupClassroomCode);
 router.get('/quizzes/:id', getPublicQuizIntro);
 
 export default router;

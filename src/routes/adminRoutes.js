@@ -100,6 +100,7 @@ import {
   setQuizAttemptVisibility,
   updateQuiz,
 } from '../controllers/adminQuizController.js';
+import { adminClassroom } from '../controllers/classroomQuizController.js';
 import {
   createSlipTest,
   deleteSlipTest,
@@ -268,6 +269,16 @@ router.patch('/dpps/:id', protectAdmin, updateDpp);
 router.delete('/dpps/:id', protectAdmin, deleteDpp);
 
 router.get('/quizzes', protectAdmin, listQuizzes);
+router.get('/quizzes/:id/classroom', protectAdmin, adminClassroom.getClassroom);
+router.post('/quizzes/:id/classroom', protectAdmin, adminClassroom.openClassroom);
+router.patch('/quizzes/:id/classroom/groups', protectAdmin, adminClassroom.updateGroups);
+router.post('/quizzes/:id/classroom/start', protectAdmin, adminClassroom.startClassroom);
+router.post('/quizzes/:id/classroom/answer', protectAdmin, adminClassroom.answerClassroom);
+router.post('/quizzes/:id/classroom/pass', protectAdmin, adminClassroom.passClassroom);
+router.post('/quizzes/:id/classroom/next', protectAdmin, adminClassroom.nextQuestion);
+router.post('/quizzes/:id/classroom/award', protectAdmin, adminClassroom.awardClassroom);
+router.post('/quizzes/:id/classroom/finish', protectAdmin, adminClassroom.finishClassroom);
+router.post('/quizzes/:id/classroom/results', protectAdmin, adminClassroom.publishResults);
 router.get('/quizzes/:id', protectAdmin, getQuiz);
 router.get('/quizzes/:id/results', protectAdmin, listQuizResults);
 router.post('/quizzes/:id/release-results', protectAdmin, releaseQuizResults);

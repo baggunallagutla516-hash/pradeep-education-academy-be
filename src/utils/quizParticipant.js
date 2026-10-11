@@ -1,5 +1,6 @@
 import { Quiz } from '../models/Quiz.js';
 import { QuizAttempt } from '../models/QuizAttempt.js';
+import { latestClassroomStatuses } from '../models/ClassroomSession.js';
 import { ApiError } from './ApiError.js';
 import { gradeAttempt, resultTier } from './quizGrading.js';
 import {
@@ -31,7 +32,7 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
   };
 }
 
-function toQuizSummaryJson(doc, attempt, viewerClassId = null) {
+function toQuizSummaryJson(doc, attempt, viewerClassId = null, extra = {}) {
   const submitted = attempt?.status === 'submitted';
   const resultsVisible = areAttemptResultsVisible(doc, attempt);
   return {
@@ -40,6 +41,8 @@ function toQuizSummaryJson(doc, attempt, viewerClassId = null) {
     description: doc.description,
     ...contentClassJsonFields(doc, { viewerClassId }),
     subject: doc.subject,
+    playMode: doc.playMode || 'individual',
+    accessMode: (doc.playMode || 'individual') === 'classroom' ? 'both' : doc.accessMode || 'both',
     endDate: doc.endDate || null,
     isClosed: isExamClosed(doc.endDate),
     isNotYetOpen: isExamNotYetOpen(doc.startDate),
@@ -55,6 +58,7 @@ function toQuizSummaryJson(doc, attempt, viewerClassId = null) {
     scoredMarks: submitted && resultsVisible ? attempt.scoredMarks : null,
     percentage: submitted && resultsVisible ? attempt.percentage : null,
     submittedAt: attempt?.submittedAt || null,
+    ...extra,
   };
 }
 
@@ -210,13 +214,20 @@ export function createQuizParticipantHandlers(role) {
         quiz: { $in: quizzes.map((doc) => doc._id) },
       });
       const attemptByQuiz = new Map(attempts.map((attempt) => [String(attempt.quiz), attempt]));
+      const visible = quizzes.filter((doc) => {
+        if ((doc.playMode || 'individual') === 'classroom') return true;
+        if ((doc.accessMode || 'both') !== 'code') return true;
+        return attemptByQuiz.has(String(doc._id));
+      });
+      const classroomStatus = await latestClassroomStatuses(visible.map((doc) => doc._id));
 
       return {
-        quizzes: quizzes.map((doc) =>
+        quizzes: visible.map((doc) =>
           toQuizSummaryJson(
             doc,
             attemptByQuiz.get(String(doc._id)),
-            role === 'student' ? options.classId : null
+            role === 'student' ? options.classId : null,
+            { classroomStatus: classroomStatus.get(String(doc._id)) || null }
           )
         ),
       };
@@ -237,6 +248,13 @@ export function createQuizParticipantHandlers(role) {
 
     start: async (quizId, participantId, options = {}) => {
       const quiz = await loadPublishedQuiz(quizId, role, options);
+
+      if ((quiz.playMode || 'individual') === 'classroom') {
+        throw new ApiError(
+          400,
+          'This quiz is played in the classroom. Join your group on the classroom board.'
+        );
+      }
 
       if (quiz.questions.length === 0) {
         throw new ApiError(400, 'This quiz has no questions yet');

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { MAX_OPTIONS, MIN_OPTIONS } from '../utils/quizGrading.js';
 
 export const QUIZ_QUESTION_TYPES = ['single', 'multiple'];
+export const QUIZ_PLAY_MODES = ['individual', 'classroom'];
 
 const quizOptionSchema = new mongoose.Schema(
   {
@@ -96,6 +97,27 @@ const quizSchema = new mongoose.Schema(
       maxlength: [2000, 'Description cannot exceed 2000 characters'],
       default: '',
     },
+    playMode: {
+      type: String,
+      enum: {
+        values: QUIZ_PLAY_MODES,
+        message: 'Play mode must be individual or classroom',
+      },
+      default: 'individual',
+    },
+    joinCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+    },
+    accessMode: {
+      type: String,
+      enum: {
+        values: ['code', 'list', 'both'],
+        message: 'Choose QR or code, the quiz list, or both',
+      },
+      default: 'both',
+    },
     studentClass: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'SchoolClass',
@@ -174,6 +196,10 @@ const quizSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+quizSchema.index(
+  { joinCode: 1 },
+  { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
+);
 quizSchema.index({ isPublished: 1, createdAt: -1 });
 quizSchema.index({ studentClasses: 1, isPublished: 1, createdAt: -1 });
 quizSchema.index({ studentClass: 1, isPublished: 1, createdAt: -1 });

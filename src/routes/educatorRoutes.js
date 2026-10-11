@@ -51,6 +51,7 @@ import {
   startEducatorSlipTest,
   submitEducatorSlipTest,
 } from '../controllers/educatorSlipTestController.js';
+import { educatorClassroom } from '../controllers/classroomQuizController.js';
 import { protectEducator } from '../middleware/educatorAuth.js';
 
 const authLimiter = rateLimit({
@@ -95,6 +96,16 @@ router.get('/unit-tests/:id', protectEducator, getEducatorUnitTest);
 router.get('/cets', protectEducator, listEducatorCets);
 router.get('/cets/:id', protectEducator, getEducatorCet);
 
+router.get('/quizzes/:id/classroom', protectEducator, educatorClassroom.getClassroom);
+router.post('/quizzes/:id/classroom', protectEducator, educatorClassroom.openClassroom);
+router.patch('/quizzes/:id/classroom/groups', protectEducator, educatorClassroom.updateGroups);
+router.post('/quizzes/:id/classroom/start', protectEducator, educatorClassroom.startClassroom);
+router.post('/quizzes/:id/classroom/answer', protectEducator, educatorClassroom.answerClassroom);
+router.post('/quizzes/:id/classroom/pass', protectEducator, educatorClassroom.passClassroom);
+router.post('/quizzes/:id/classroom/next', protectEducator, educatorClassroom.nextQuestion);
+router.post('/quizzes/:id/classroom/award', protectEducator, educatorClassroom.awardClassroom);
+router.post('/quizzes/:id/classroom/finish', protectEducator, educatorClassroom.finishClassroom);
+router.post('/quizzes/:id/classroom/results', protectEducator, educatorClassroom.publishResults);
 router.get('/quizzes', protectEducator, listEducatorQuizzes);
 router.get('/quizzes/:id', protectEducator, getEducatorQuiz);
 router.post('/quizzes/:id/start', protectEducator, startEducatorQuiz);

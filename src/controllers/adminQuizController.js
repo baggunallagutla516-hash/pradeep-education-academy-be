@@ -1,5 +1,6 @@
-import { Quiz, QUIZ_QUESTION_TYPES } from '../models/Quiz.js';
+import { Quiz, QUIZ_PLAY_MODES, QUIZ_QUESTION_TYPES } from '../models/Quiz.js';
 import { QuizAttempt } from '../models/QuizAttempt.js';
+import { ClassroomSession } from '../models/ClassroomSession.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
@@ -15,6 +16,7 @@ import {
   resultUrlForRole,
 } from '../utils/examParticipant.js';
 import { clearAttemptById, deleteAttemptById, setAttemptResultsHidden } from '../utils/reattempt.js';
+import { ensureIndividualJoinCode } from '../utils/joinCode.js';
 
 function toQuestionJson(question) {
   return {
@@ -41,6 +43,9 @@ function toQuizJson(doc, extra = {}) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     subject: doc.subject,
+    playMode: doc.playMode || 'individual',
+    accessMode: (doc.playMode || 'individual') === 'classroom' ? '' : doc.accessMode || 'both',
+    joinCode: (doc.playMode || 'individual') === 'classroom' || (doc.accessMode || 'both') === 'list' ? '' : doc.joinCode || '',
     startDate: doc.startDate || null,
     endDate: doc.endDate || null,
     durationMinutes: doc.durationMinutes,
@@ -79,6 +84,24 @@ function assertValidQuestions(questions) {
   }
 }
 
+function readPlayMode(value, fallback = 'individual') {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (!QUIZ_PLAY_MODES.includes(value)) {
+    throw new ApiError(400, 'Play mode must be individual or classroom');
+  }
+  return value;
+}
+
+const QUIZ_ACCESS_MODES = ['code', 'list', 'both'];
+
+function readAccessMode(value, fallback = 'both') {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (!QUIZ_ACCESS_MODES.includes(value)) {
+    throw new ApiError(400, 'Choose how students start this quiz.');
+  }
+  return value;
+}
+
 function readDuration(value) {
   const duration = Number(value);
   if (!Number.isFinite(duration) || duration < 1 || duration > 300) {
@@ -102,6 +125,10 @@ export const listQuizzes = asyncHandler(async (_req, res) => {
     .populate('studentClasses', 'name')
     .sort({ createdAt: -1 });
 
+  for (const doc of quizzes) {
+    await ensureIndividualJoinCode(doc);
+  }
+
   const counts = await QuizAttempt.aggregate([
     { $group: { _id: '$quiz', count: { $sum: 1 } } },
   ]);
@@ -122,6 +149,7 @@ export const getQuiz = asyncHandler(async (req, res) => {
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name');
   if (!quiz) throw new ApiError(404, 'Quiz not found');
+  await ensureIndividualJoinCode(quiz);
 
   res.status(200).json({
     success: true,
@@ -147,6 +175,8 @@ export const createQuiz = asyncHandler(async (req, res) => {
     studentClass,
     studentClasses,
     subject: (subject || '').trim(),
+    playMode: readPlayMode(req.body.playMode),
+    accessMode: readPlayMode(req.body.playMode) === 'classroom' ? 'both' : readAccessMode(req.body.accessMode),
     startDate: starts,
     endDate: ends,
     durationMinutes: readDuration(req.body.durationMinutes),
@@ -159,6 +189,7 @@ export const createQuiz = asyncHandler(async (req, res) => {
     createdBy: req.admin._id,
   });
 
+  await ensureIndividualJoinCode(quiz);
   await quiz.populate([
     { path: 'studentClass', select: 'name' },
     { path: 'studentClasses', select: 'name' },
@@ -184,6 +215,10 @@ export const updateQuiz = asyncHandler(async (req, res) => {
   }
   if (description !== undefined) quiz.description = description.trim();
   if (subject !== undefined) quiz.subject = subject.trim();
+  if (req.body.playMode !== undefined) quiz.playMode = readPlayMode(req.body.playMode, quiz.playMode);
+  if (req.body.accessMode !== undefined || req.body.playMode !== undefined) {
+    quiz.accessMode = quiz.playMode === 'classroom' ? 'both' : readAccessMode(req.body.accessMode, quiz.accessMode || 'both');
+  }
   if (req.body.studentClasses !== undefined || req.body.studentClass !== undefined) {
     const { studentClasses, studentClass } = await resolveContentClasses(req.body);
     quiz.studentClasses = studentClasses;
@@ -229,6 +264,7 @@ export const updateQuiz = asyncHandler(async (req, res) => {
       );
     }
     await QuizAttempt.deleteMany({ quiz: quiz._id });
+    await ClassroomSession.deleteMany({ quiz: quiz._id });
     quiz.resultsReleased = false;
     quiz.resultsReleasedAt = null;
   }
@@ -240,6 +276,7 @@ export const updateQuiz = asyncHandler(async (req, res) => {
     quiz.publishedAt = null;
   }
 
+  await ensureIndividualJoinCode(quiz, { save: false });
   await quiz.save();
   await quiz.populate([
     { path: 'studentClass', select: 'name' },
@@ -262,6 +299,7 @@ export const deleteQuiz = asyncHandler(async (req, res) => {
   if (!quiz) throw new ApiError(404, 'Quiz not found');
 
   await QuizAttempt.deleteMany({ quiz: quiz._id });
+  await ClassroomSession.deleteMany({ quiz: quiz._id });
   await quiz.deleteOne();
 
   res.status(200).json({
