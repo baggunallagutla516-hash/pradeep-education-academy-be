@@ -11,7 +11,7 @@ import {
 import { downloadWindowFields } from '../utils/examWindow.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
+  'title description studentClass studentClasses subjectName unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
 
 function toEducatorUnitTestJson(doc) {
   const window = downloadWindowFields(doc);
@@ -20,8 +20,7 @@ function toEducatorUnitTestJson(doc) {
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
-    unitNumber: doc.unitNumber,
-    unitName: doc.unitName,
+    subjectName: String(doc.subjectName || doc.unitName || '').trim(),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: window.fileUrl,
     fileName: doc.fileName,
@@ -49,7 +48,7 @@ export const listEducatorUnitTests = asyncHandler(async (req, res) => {
     UnitTest.find(filter)
       .populate('studentClass', 'name')
       .populate('studentClasses', 'name')
-      .sort({ studentClass: 1, unitNumber: 1, createdAt: -1 })
+      .sort({ studentClass: 1, createdAt: -1 })
       .select(PUBLIC_FIELDS),
     listClassesByIds(assignedIds),
   ]);

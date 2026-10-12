@@ -10,7 +10,7 @@ import { downloadWindowFields } from '../utils/examWindow.js';
 import { includeInStudentList } from '../utils/contentAccess.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses unitNumber unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt accessMode';
+  'title description studentClass studentClasses subjectName unitName coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt accessMode';
 
 function toStudentUnitTestJson(doc) {
   const window = downloadWindowFields(doc);
@@ -19,8 +19,7 @@ function toStudentUnitTestJson(doc) {
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
-    unitNumber: doc.unitNumber,
-    unitName: doc.unitName,
+    subjectName: String(doc.subjectName || doc.unitName || '').trim(),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: window.fileUrl,
     fileName: doc.fileName,
@@ -51,7 +50,7 @@ export const listStudentUnitTests = asyncHandler(async (req, res) => {
   })
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
-    .sort({ unitNumber: 1, createdAt: -1 })
+    .sort({ createdAt: -1 })
     .select(PUBLIC_FIELDS);
 
   const classFields = classRefFields(req.user.studentClass);

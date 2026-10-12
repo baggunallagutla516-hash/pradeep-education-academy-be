@@ -13,14 +13,17 @@ import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/exa
 import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
 import { ensureContentJoinCode } from '../utils/joinCode.js';
 
+function resolveSubjectName(doc) {
+  return String(doc.subjectName || doc.unitName || '').trim();
+}
+
 function toUnitTestJson(doc) {
   return {
     id: doc._id,
     title: doc.title,
     description: doc.description,
     ...contentClassJsonFields(doc),
-    unitNumber: doc.unitNumber,
-    unitName: doc.unitName,
+    subjectName: resolveSubjectName(doc),
     ...contentAccessJson(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
@@ -41,12 +44,11 @@ function parsePublished(value) {
   return value === 'true' || value === true;
 }
 
-function parseUnitNumber(value) {
-  const num = Number(String(value ?? '').trim());
-  if (!Number.isInteger(num) || num < 1 || num > 200) {
-    throw new ApiError(400, 'Unit number must be a whole number between 1 and 200');
-  }
-  return num;
+function parseSubjectName(value) {
+  const name = String(value ?? '').trim();
+  if (!name) throw new ApiError(400, 'Subject name is required');
+  if (name.length > 160) throw new ApiError(400, 'Subject name cannot exceed 160 characters');
+  return name;
 }
 
 async function unlinkTemp(file) {
@@ -86,7 +88,7 @@ export const listUnitTests = asyncHandler(async (_req, res) => {
   const unitTests = await UnitTest.find()
     .populate('studentClass', 'name')
     .populate('studentClasses', 'name')
-    .sort({ studentClass: 1, unitNumber: 1, createdAt: -1 });
+    .sort({ studentClass: 1, createdAt: -1 });
   for (const doc of unitTests) {
     await ensureContentJoinCode(doc);
   }
@@ -109,14 +111,14 @@ export const getUnitTest = asyncHandler(async (req, res) => {
 });
 
 export const createUnitTest = asyncHandler(async (req, res) => {
-  const { title, description, unitNumber, unitName, isPublished, startDate, endDate } = req.body;
+  const { title, description, subjectName, isPublished, startDate, endDate } = req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
 
   try {
     if (!title?.trim()) throw new ApiError(400, 'Title is required');
     const { studentClasses, studentClass } = await resolveContentClasses(req.body);
-    const unit = parseUnitNumber(unitNumber);
+    const subject = parseSubjectName(subjectName);
     const starts = readStartDate(startDate, { label: 'starting date and time' });
     const ends = readEndDate(endDate);
     assertEndDateNotBefore(ends, starts, 'starting date and time');
@@ -139,8 +141,9 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       description: description?.trim() || '',
       studentClass,
       studentClasses,
-      unitNumber: unit,
-      unitName: unitName?.trim() || '',
+      subjectName: subject,
+      unitNumber: null,
+      unitName: '',
       coverImageUrl: coverUpload?.url || '',
       coverImageKey: coverUpload?.key || '',
       fileUrl: fileUpload.url,
@@ -178,7 +181,7 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
   const unitTest = await UnitTest.findById(req.params.id);
   if (!unitTest) throw new ApiError(404, 'Unit test not found');
 
-  const { title, description, unitNumber, unitName, isPublished, removeCoverImage, startDate, endDate } =
+  const { title, description, subjectName, isPublished, removeCoverImage, startDate, endDate } =
     req.body;
   const cover = req.files?.coverImage?.[0];
   const file = req.files?.file?.[0];
@@ -196,11 +199,10 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
       unitTest.studentClasses = studentClasses;
       unitTest.studentClass = studentClass;
     }
-    if (unitNumber !== undefined) {
-      unitTest.unitNumber = parseUnitNumber(unitNumber);
-    }
-    if (unitName !== undefined) {
-      unitTest.unitName = String(unitName).trim();
+    if (subjectName !== undefined) {
+      unitTest.subjectName = parseSubjectName(subjectName);
+      unitTest.unitNumber = null;
+      unitTest.unitName = '';
     }
     if (startDate !== undefined) {
       unitTest.startDate = readStartDate(startDate, { label: 'starting date and time' });

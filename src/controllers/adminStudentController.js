@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { Parent } from '../models/Parent.js';
 import { Student } from '../models/Student.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -7,6 +8,7 @@ import { env } from '../config/env.js';
 import { sendAccountActivatedEmail } from '../utils/mailer.js';
 import { assertActiveClassId } from '../utils/schoolClass.js';
 import { ensureStudentRegistrationId } from '../utils/registrationId.js';
+import { unlinkParentAndStudent } from '../utils/parentStudentLink.js';
 import {
   assertStorageConfigured,
   buildObjectKey,
@@ -257,14 +259,28 @@ export const setStudentActive = asyncHandler(async (req, res) => {
 });
 
 export const softDeleteStudent = asyncHandler(async (req, res) => {
-  const student = await Student.findOne({ _id: req.params.id, deletedAt: null });
+  const student = await Student.findById(req.params.id);
   if (!student) {
     throw new ApiError(404, 'Student not found');
   }
 
-  student.deletedAt = new Date();
-  student.isActive = false;
-  await student.save({ validateBeforeSave: false });
+  const linkedParentIds = [...(student.parentIds || [])];
+  if (linkedParentIds.length > 0) {
+    const parents = await Parent.find({ _id: { $in: linkedParentIds } });
+    for (const parent of parents) {
+      await unlinkParentAndStudent(parent, student);
+    }
+  }
+
+  if (student.profilePhotoKey) {
+    try {
+      await deleteObject(student.profilePhotoKey);
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
+
+  await Student.deleteOne({ _id: student._id });
 
   res.status(200).json({
     success: true,

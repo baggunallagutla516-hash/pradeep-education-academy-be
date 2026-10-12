@@ -26,16 +26,22 @@ const unitTestSchema = new mongoose.Schema(
         ref: 'SchoolClass',
       },
     ],
+    /** @deprecated Kept for older exam records; new exams use subjectName. */
     unitNumber: {
       type: Number,
-      required: [true, 'Unit number is required'],
-      min: [1, 'Unit number must be at least 1'],
-      max: [200, 'Unit number cannot exceed 200'],
+      default: null,
     },
+    /** @deprecated Prefer subjectName. */
     unitName: {
       type: String,
       trim: true,
       maxlength: [160, 'Unit name cannot exceed 160 characters'],
+      default: '',
+    },
+    subjectName: {
+      type: String,
+      trim: true,
+      maxlength: [160, 'Subject name cannot exceed 160 characters'],
       default: '',
     },
     coverImageUrl: {
@@ -98,8 +104,8 @@ const unitTestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-unitTestSchema.index({ studentClass: 1, isPublished: 1, unitNumber: 1 });
-unitTestSchema.index({ studentClasses: 1, isPublished: 1, unitNumber: 1 });
+unitTestSchema.index({ studentClass: 1, isPublished: 1, createdAt: -1 });
+unitTestSchema.index({ studentClasses: 1, isPublished: 1, createdAt: -1 });
 unitTestSchema.index(
   { joinCode: 1 },
   { unique: true, partialFilterExpression: { joinCode: { $type: 'string' } } }
