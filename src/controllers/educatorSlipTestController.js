@@ -1,5 +1,6 @@
 import { SlipTest } from '../models/SlipTest.js';
 import { SlipTestAttempt } from '../models/SlipTestAttempt.js';
+import { findPurchaseStatusByContentIds, purchaseStatusFields } from '../models/ContentPurchase.js';
 import { participantIdentity } from '../utils/examParticipant.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -20,6 +21,7 @@ import {
 } from '../utils/optionOrder.js';
 import { assertExamWindow, isExamClosed, isExamNotYetOpen } from '../utils/examWindow.js';
 import { areAttemptResultsVisible } from '../utils/resultsRelease.js';
+import { applyPurchaseGate, priceJsonFields } from '../utils/paperPricing.js';
 
 const EDUCATOR_ROLE = 'educator';
 
@@ -51,10 +53,19 @@ function toAttemptQuestionJson(question, index, orderByQuestion) {
   };
 }
 
-function toSlipTestSummaryJson(doc, attempt) {
+function toSlipTestSummaryJson(doc, attempt, { isPurchased = false, paymentStatus = 'none', paymentUtr = '' } = {}) {
   const contentMode = doc.contentMode === 'file' ? 'file' : 'exam';
   const submitted = attempt?.status === 'submitted';
   const resultsVisible = areAttemptResultsVisible(doc, attempt);
+  const pricing = priceJsonFields(doc);
+  let fileUrl = contentMode === 'file' ? doc.fileUrl || '' : '';
+  if (contentMode === 'file') {
+    fileUrl = applyPurchaseGate({ fileUrl }, doc, { isPurchased }).fileUrl;
+  }
+  const payment =
+    contentMode === 'file'
+      ? purchaseStatusFields({ status: paymentStatus, utr: paymentUtr })
+      : purchaseStatusFields({ status: 'none', utr: '' });
   return {
     id: doc._id,
     contentMode,
@@ -74,10 +85,16 @@ function toSlipTestSummaryJson(doc, attempt) {
     questionCount: doc.questions?.length || 0,
     totalMarks: doc.totalMarks,
     coverImageUrl: doc.coverImageUrl || '',
-    fileUrl: contentMode === 'file' ? doc.fileUrl || '' : '',
+    fileUrl,
     fileName: contentMode === 'file' ? doc.fileName || '' : '',
     fileMimeType: contentMode === 'file' ? doc.fileMimeType || '' : '',
     fileSize: contentMode === 'file' ? doc.fileSize || 0 : 0,
+    priceType: pricing.priceType,
+    priceAmount: pricing.priceAmount,
+    priceLabel: pricing.priceLabel,
+    priceCaption: pricing.priceCaption,
+    needsPayment: contentMode === 'file' ? pricing.needsPayment : false,
+    ...payment,
     attemptStatus: attempt ? attempt.status : 'not_started',
     resultsReleased: resultsVisible,
     resultsReleasedAt: doc.resultsReleasedAt || null,
@@ -216,14 +233,26 @@ export const listEducatorSlipTests = asyncHandler(async (req, res) => {
   });
   const attemptByTest = new Map(attempts.map((attempt) => [String(attempt.slipTest), attempt]));
 
+  const statusMap = await findPurchaseStatusByContentIds({
+    buyerType: 'educator',
+    buyerId: req.educator._id,
+    contentType: 'slip-test',
+    contentIds: slipTests.map((doc) => doc._id),
+  });
+
   res.status(200).json({
     success: true,
     data: {
       studentClass: selectedClass,
       classes: classDocs.map(toPublicClass),
-      slipTests: slipTests.map((doc) =>
-        toSlipTestSummaryJson(doc, attemptByTest.get(String(doc._id)))
-      ),
+      slipTests: slipTests.map((doc) => {
+        const info = statusMap.get(String(doc._id));
+        return toSlipTestSummaryJson(doc, attemptByTest.get(String(doc._id)), {
+          isPurchased: info?.isPurchased,
+          paymentStatus: info?.status || 'none',
+          paymentUtr: info?.utr || '',
+        });
+      }),
     },
   });
 });
@@ -236,9 +265,25 @@ export const getEducatorSlipTest = asyncHandler(async (req, res) => {
     attempt = await finaliseExpiredAttempt(attempt, slipTest);
   }
 
+  let paymentOpts = {};
+  if (slipTest.contentMode === 'file') {
+    const statusMap = await findPurchaseStatusByContentIds({
+      buyerType: 'educator',
+      buyerId: req.educator._id,
+      contentType: 'slip-test',
+      contentIds: [slipTest._id],
+    });
+    const info = statusMap.get(String(slipTest._id));
+    paymentOpts = {
+      isPurchased: info?.isPurchased,
+      paymentStatus: info?.status || 'none',
+      paymentUtr: info?.utr || '',
+    };
+  }
+
   res.status(200).json({
     success: true,
-    data: { slipTest: toSlipTestSummaryJson(slipTest, attempt) },
+    data: { slipTest: toSlipTestSummaryJson(slipTest, attempt, paymentOpts) },
   });
 });
 

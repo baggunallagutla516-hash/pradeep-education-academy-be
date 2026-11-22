@@ -52,6 +52,7 @@ import {
   submitEducatorSlipTest,
 } from '../controllers/educatorSlipTestController.js';
 import { educatorClassroom } from '../controllers/classroomQuizController.js';
+import { listEducatorOnlineClasses } from '../controllers/onlineClassController.js';
 import { protectEducator } from '../middleware/educatorAuth.js';
 
 const authLimiter = rateLimit({
@@ -86,6 +87,8 @@ router.post('/verify-reset-otp', authLimiter, verifyEducatorResetOtp);
 router.post('/reset-password', authLimiter, resetEducatorPassword);
 router.get('/me', protectEducator, getEducatorMe);
 router.patch('/me', protectEducator, updateEducatorMe);
+
+router.get('/online-classes', protectEducator, listEducatorOnlineClasses);
 
 router.get('/worksheets', protectEducator, listEducatorWorksheets);
 router.get('/worksheets/:id', protectEducator, getEducatorWorksheet);

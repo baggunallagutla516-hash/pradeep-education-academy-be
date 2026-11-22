@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { contentAccessPaths } from '../utils/contentAccess.js';
+import { priceTypePath } from '../utils/paperPricing.js';
 
 const chapterEndTestSchema = new mongoose.Schema(
   {
@@ -93,6 +94,7 @@ const chapterEndTestSchema = new mongoose.Schema(
       ref: 'Admin',
       required: true,
     },
+    ...priceTypePath(),
     ...contentAccessPaths(),
   },
   { timestamps: true }

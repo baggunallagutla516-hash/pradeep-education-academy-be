@@ -1,4 +1,5 @@
 import { Worksheet } from '../models/Worksheet.js';
+import { findPurchaseStatusByContentIds, purchaseStatusFields } from '../models/ContentPurchase.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/ApiError.js';
 import {
@@ -9,12 +10,13 @@ import {
   toPublicClass,
 } from '../utils/schoolClass.js';
 import { downloadWindowFields } from '../utils/examWindow.js';
+import { applyPurchaseGate } from '../utils/paperPricing.js';
 
 const PUBLIC_FIELDS =
-  'title description studentClass studentClasses coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt';
+  'title description studentClass studentClasses coverImageUrl fileUrl fileName fileMimeType fileSize startDate endDate publishedAt createdAt priceType';
 
-function toEducatorWorksheetJson(doc) {
-  const window = downloadWindowFields(doc);
+function toEducatorWorksheetJson(doc, { isPurchased = false, paymentStatus = 'none', paymentUtr = '' } = {}) {
+  const window = applyPurchaseGate(downloadWindowFields(doc), doc, { isPurchased });
   return {
     id: doc._id,
     title: doc.title,
@@ -29,6 +31,12 @@ function toEducatorWorksheetJson(doc) {
     endDate: window.endDate,
     isNotYetOpen: window.isNotYetOpen,
     isClosed: window.isClosed,
+    priceType: window.priceType,
+    priceAmount: window.priceAmount,
+    priceLabel: window.priceLabel,
+    priceCaption: window.priceCaption,
+    needsPayment: window.needsPayment,
+    ...purchaseStatusFields({ status: paymentStatus, utr: paymentUtr }),
     publishedAt: doc.publishedAt,
     createdAt: doc.createdAt,
   };
@@ -52,12 +60,26 @@ export const listEducatorWorksheets = asyncHandler(async (req, res) => {
     listClassesByIds(assignedIds),
   ]);
 
+  const statusMap = await findPurchaseStatusByContentIds({
+    buyerType: 'educator',
+    buyerId: req.educator._id,
+    contentType: 'worksheet',
+    contentIds: worksheets.map((doc) => doc._id),
+  });
+
   res.status(200).json({
     success: true,
     data: {
       studentClass: selectedClass,
       classes: classDocs.map(toPublicClass),
-      worksheets: worksheets.map(toEducatorWorksheetJson),
+      worksheets: worksheets.map((doc) => {
+        const info = statusMap.get(String(doc._id));
+        return toEducatorWorksheetJson(doc, {
+          isPurchased: info?.isPurchased,
+          paymentStatus: info?.status || 'none',
+          paymentUtr: info?.utr || '',
+        });
+      }),
     },
   });
 });
@@ -74,8 +96,22 @@ export const getEducatorWorksheet = asyncHandler(async (req, res) => {
   if (!worksheet) throw new ApiError(404, 'Worksheet not found');
   assertDocInAssignedClasses(worksheet, req.educator, 'Worksheet');
 
+  const statusMap = await findPurchaseStatusByContentIds({
+    buyerType: 'educator',
+    buyerId: req.educator._id,
+    contentType: 'worksheet',
+    contentIds: [worksheet._id],
+  });
+  const info = statusMap.get(String(worksheet._id));
+
   res.status(200).json({
     success: true,
-    data: { worksheet: toEducatorWorksheetJson(worksheet) },
+    data: {
+      worksheet: toEducatorWorksheetJson(worksheet, {
+        isPurchased: info?.isPurchased,
+        paymentStatus: info?.status || 'none',
+        paymentUtr: info?.utr || '',
+      }),
+    },
   });
 });

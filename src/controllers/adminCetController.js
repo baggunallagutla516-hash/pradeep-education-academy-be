@@ -12,6 +12,7 @@ import {
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
 import { ensureContentJoinCode } from '../utils/joinCode.js';
+import { parsePriceType, priceJsonFields } from '../utils/paperPricing.js';
 
 function toCetJson(doc) {
   return {
@@ -22,6 +23,7 @@ function toCetJson(doc) {
     chapterNumber: doc.chapterNumber,
     chapterName: doc.chapterName,
     ...contentAccessJson(doc),
+    ...priceJsonFields(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -134,6 +136,7 @@ export const createCet = asyncHandler(async (req, res) => {
     }
 
     const published = parsePublished(isPublished);
+    const priceType = parsePriceType(req.body.priceType);
 
     const cet = await ChapterEndTest.create({
       title: title.trim(),
@@ -152,6 +155,7 @@ export const createCet = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      priceType,
       accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -254,6 +258,9 @@ export const updateCet = asyncHandler(async (req, res) => {
 
     if (req.body.accessMode !== undefined) {
       cet.accessMode = readAccessMode(req.body.accessMode, cet.accessMode);
+    }
+    if (req.body.priceType !== undefined) {
+      cet.priceType = parsePriceType(req.body.priceType);
     }
     await ensureContentJoinCode(cet, { save: false });
     await cet.save();

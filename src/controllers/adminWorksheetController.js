@@ -12,6 +12,7 @@ import {
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
 import { ensureContentJoinCode } from '../utils/joinCode.js';
+import { parsePriceType, priceJsonFields } from '../utils/paperPricing.js';
 
 function toWorksheetJson(doc) {
   return {
@@ -20,6 +21,7 @@ function toWorksheetJson(doc) {
     description: doc.description,
     ...contentClassJsonFields(doc),
     ...contentAccessJson(doc),
+    ...priceJsonFields(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -124,6 +126,7 @@ export const createWorksheet = asyncHandler(async (req, res) => {
     }
 
     const published = parsePublished(isPublished);
+    const priceType = parsePriceType(req.body.priceType);
 
     const worksheet = await Worksheet.create({
       title: title.trim(),
@@ -140,6 +143,7 @@ export const createWorksheet = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      priceType,
       accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -222,6 +226,9 @@ export const updateWorksheet = asyncHandler(async (req, res) => {
 
     if (req.body.accessMode !== undefined) {
       worksheet.accessMode = readAccessMode(req.body.accessMode, worksheet.accessMode);
+    }
+    if (req.body.priceType !== undefined) {
+      worksheet.priceType = parsePriceType(req.body.priceType);
     }
     await ensureContentJoinCode(worksheet, { save: false });
     await worksheet.save();

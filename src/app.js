@@ -16,8 +16,10 @@ import assessmentRoutes from "./routes/assessmentRoutes.js";
 import dppRoutes from "./routes/dppRoutes.js";
 import quizRoutes from "./routes/quizRoutes.js";
 import slipTestRoutes from "./routes/slipTestRoutes.js";
+import onlineClassRoutes from "./routes/onlineClassRoutes.js";
 import parentRoutes from "./routes/parentRoutes.js";
 import educatorRoutes from "./routes/educatorRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { uploadsDir } from "./middleware/upload.js";
 
@@ -80,6 +82,8 @@ export function createApp() {
   app.use("/api/dpps", dppRoutes);
   app.use("/api/quizzes", quizRoutes);
   app.use("/api/slip-tests", slipTestRoutes);
+  app.use("/api/online-classes", onlineClassRoutes);
+  app.use("/api/payments", paymentRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

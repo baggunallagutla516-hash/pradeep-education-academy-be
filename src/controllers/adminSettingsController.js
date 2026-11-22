@@ -88,6 +88,38 @@ export const removeSiteLogo = asyncHandler(async (_req, res) => {
   });
 });
 
+function parseUpiId(value) {
+  const upiId = String(value ?? '').trim();
+  if (!upiId) throw new ApiError(400, 'UPI ID is required');
+  if (!upiId.includes('@')) throw new ApiError(400, 'UPI ID must contain @');
+  if (upiId.length > 80) throw new ApiError(400, 'UPI ID cannot exceed 80 characters');
+  return upiId;
+}
+
+function parseUpiPayeeName(value) {
+  if (value === undefined || value === null || value === '') return 'Pradeep Sir';
+  const name = String(value).trim();
+  if (!name) return 'Pradeep Sir';
+  if (name.length > 80) throw new ApiError(400, 'Payee name cannot exceed 80 characters');
+  return name;
+}
+
+export const updateUpiSettings = asyncHandler(async (req, res) => {
+  const upiId = parseUpiId(req.body.upiId);
+  const upiPayeeName = parseUpiPayeeName(req.body.upiPayeeName);
+
+  const settings = await getSiteSettings();
+  settings.upiId = upiId;
+  settings.upiPayeeName = upiPayeeName;
+  await settings.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'UPI settings updated',
+    data: { settings: toPublicSiteSettings(settings) },
+  });
+});
+
 export const createClass = asyncHandler(async (req, res) => {
   const name = String(req.body.name || '').trim();
   if (!name) throw new ApiError(400, 'Class name is required');

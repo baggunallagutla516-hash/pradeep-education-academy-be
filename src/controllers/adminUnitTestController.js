@@ -12,6 +12,7 @@ import {
 import { assertEndDateNotBefore, readEndDate, readStartDate } from '../utils/examWindow.js';
 import { contentAccessJson, readAccessMode } from '../utils/contentAccess.js';
 import { ensureContentJoinCode } from '../utils/joinCode.js';
+import { parsePriceType, priceJsonFields } from '../utils/paperPricing.js';
 
 function resolveSubjectName(doc) {
   return String(doc.subjectName || doc.unitName || '').trim();
@@ -25,6 +26,7 @@ function toUnitTestJson(doc) {
     ...contentClassJsonFields(doc),
     subjectName: resolveSubjectName(doc),
     ...contentAccessJson(doc),
+    ...priceJsonFields(doc),
     coverImageUrl: doc.coverImageUrl,
     fileUrl: doc.fileUrl,
     fileName: doc.fileName,
@@ -135,6 +137,7 @@ export const createUnitTest = asyncHandler(async (req, res) => {
     }
 
     const published = parsePublished(isPublished);
+    const priceType = parsePriceType(req.body.priceType);
 
     const unitTest = await UnitTest.create({
       title: title.trim(),
@@ -154,6 +157,7 @@ export const createUnitTest = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: published,
+      priceType,
       accessMode: readAccessMode(req.body.accessMode),
       publishedAt: published ? new Date() : null,
       createdBy: req.admin._id,
@@ -247,6 +251,9 @@ export const updateUnitTest = asyncHandler(async (req, res) => {
 
     if (req.body.accessMode !== undefined) {
       unitTest.accessMode = readAccessMode(req.body.accessMode, unitTest.accessMode);
+    }
+    if (req.body.priceType !== undefined) {
+      unitTest.priceType = parsePriceType(req.body.priceType);
     }
     await ensureContentJoinCode(unitTest, { save: false });
     await unitTest.save();

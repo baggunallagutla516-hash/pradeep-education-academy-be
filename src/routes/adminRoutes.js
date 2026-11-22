@@ -38,6 +38,12 @@ import {
   updateNews,
 } from '../controllers/adminNewsController.js';
 import {
+  createOnlineClass,
+  deleteOnlineClass,
+  listAdminOnlineClasses,
+  updateOnlineClass,
+} from '../controllers/onlineClassController.js';
+import {
   createCarouselSlide,
   deleteCarouselSlide,
   listCarouselSlides,
@@ -136,8 +142,13 @@ import {
   getAdminSettings,
   removeSiteLogo,
   updateClass,
+  updateUpiSettings,
   uploadSiteLogo,
 } from '../controllers/adminSettingsController.js';
+import {
+  enableContentPayment,
+  listContentPayments,
+} from '../controllers/adminPaymentController.js';
 import { protectAdmin } from '../middleware/adminAuth.js';
 import {
   uploadLogo,
@@ -218,6 +229,11 @@ router.get('/news', protectAdmin, listNews);
 router.post('/news', protectAdmin, createNews);
 router.patch('/news/:id', protectAdmin, updateNews);
 router.delete('/news/:id', protectAdmin, deleteNews);
+
+router.get('/online-classes', protectAdmin, listAdminOnlineClasses);
+router.post('/online-classes', protectAdmin, createOnlineClass);
+router.patch('/online-classes/:id', protectAdmin, updateOnlineClass);
+router.delete('/online-classes/:id', protectAdmin, deleteOnlineClass);
 
 router.get('/carousel', protectAdmin, listCarouselSlides);
 router.post('/carousel', protectAdmin, uploadCarouselAssets, createCarouselSlide);
@@ -312,10 +328,18 @@ router.patch('/contact-queries/:id', protectAdmin, updateContactQueryStatus);
 router.delete('/contact-queries/:id', protectAdmin, deleteContactQuery);
 
 router.get('/settings', protectAdmin, getAdminSettings);
+router.patch('/settings/upi', protectAdmin, updateUpiSettings);
 router.post('/settings/logo', protectAdmin, uploadLogo, uploadSiteLogo);
 router.delete('/settings/logo', protectAdmin, removeSiteLogo);
 router.post('/settings/classes', protectAdmin, createClass);
 router.patch('/settings/classes/:id', protectAdmin, updateClass);
 router.delete('/settings/classes/:id', protectAdmin, deleteClass);
+
+router.get('/payments/:contentType/:contentId', protectAdmin, listContentPayments);
+router.post(
+  '/payments/:contentType/:contentId/enable',
+  protectAdmin,
+  enableContentPayment
+);
 
 export default router;

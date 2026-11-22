@@ -24,6 +24,7 @@ import {
   keyFromPublicUrl,
   uploadDiskFile,
 } from '../utils/storage.js';
+import { parsePriceType, priceJsonFields } from '../utils/paperPricing.js';
 
 function toQuestionJson(question) {
   return {
@@ -56,6 +57,7 @@ function toSlipTestJson(doc, extra = {}) {
     ...contentClassJsonFields(doc),
     subject: doc.subject,
     ...contentAccessJson(doc),
+    ...priceJsonFields(doc),
     chapter: doc.chapter,
     topic: doc.topic,
     startDate: doc.startDate || null,
@@ -206,6 +208,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
     const ends = readEndDate(endDate);
     assertEndDateNotBefore(ends, starts, 'starting date and time');
 
+    const priceType = parsePriceType(req.body.priceType);
     const base = {
       contentMode,
       title: title.trim(),
@@ -218,6 +221,7 @@ export const createSlipTest = asyncHandler(async (req, res) => {
       startDate: starts,
       endDate: ends,
       isPublished: parseBoolean(req.body.isPublished, false),
+      priceType,
       accessMode: readAccessMode(req.body.accessMode),
       createdBy: req.admin._id,
     };
@@ -394,6 +398,9 @@ export const updateSlipTest = asyncHandler(async (req, res) => {
 
     if (req.body.accessMode !== undefined) {
       slipTest.accessMode = readAccessMode(req.body.accessMode, slipTest.accessMode);
+    }
+    if (req.body.priceType !== undefined) {
+      slipTest.priceType = parsePriceType(req.body.priceType);
     }
     await ensureContentJoinCode(slipTest, { save: false });
     await slipTest.save();

@@ -20,6 +20,16 @@ const siteSettingsSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    upiId: {
+      type: String,
+      trim: true,
+      default: '9505820072@ybl',
+    },
+    upiPayeeName: {
+      type: String,
+      trim: true,
+      default: 'Pradeep Sir',
+    },
   },
   { timestamps: true }
 );
@@ -37,5 +47,7 @@ export async function getSiteSettings() {
 export function toPublicSiteSettings(doc) {
   return {
     logoUrl: doc.logoUrl || '',
+    upiId: doc.upiId || '9505820072@ybl',
+    upiPayeeName: doc.upiPayeeName || 'Pradeep Sir',
   };
 }

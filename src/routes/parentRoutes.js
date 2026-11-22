@@ -20,6 +20,7 @@ import {
   startParentQuiz,
   submitParentQuiz,
 } from '../controllers/parentQuizController.js';
+import { listParentOnlineClasses } from '../controllers/onlineClassController.js';
 import { protectParent } from '../middleware/parentAuth.js';
 
 const authLimiter = rateLimit({
@@ -58,6 +59,8 @@ router.patch('/me', protectParent, updateParentMe);
 router.get('/children', protectParent, listChildren);
 router.get('/children/:studentId/results', protectParent, getChildResults);
 router.get('/children/:studentId', protectParent, getChild);
+
+router.get('/online-classes', protectParent, listParentOnlineClasses);
 
 router.get('/quizzes', protectParent, listParentQuizzes);
 router.get('/quizzes/:id', protectParent, getParentQuiz);
