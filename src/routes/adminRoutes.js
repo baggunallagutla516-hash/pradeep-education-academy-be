@@ -148,6 +148,7 @@ import {
 import {
   enableContentPayment,
   listContentPayments,
+  lockContentPayment,
 } from '../controllers/adminPaymentController.js';
 import { protectAdmin } from '../middleware/adminAuth.js';
 import {
@@ -340,6 +341,11 @@ router.post(
   '/payments/:contentType/:contentId/enable',
   protectAdmin,
   enableContentPayment
+);
+router.post(
+  '/payments/:contentType/:contentId/lock',
+  protectAdmin,
+  lockContentPayment
 );
 
 export default router;

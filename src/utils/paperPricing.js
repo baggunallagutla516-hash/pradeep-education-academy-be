@@ -1,6 +1,6 @@
 import { ApiError } from './ApiError.js';
 
-/** Fixed price options for downloadable papers (question paper / marking / blueprint). */
+/** Legacy fixed presets (still readable for older papers). */
 export const PAPER_PRICE_OPTIONS = [
   {
     value: 'free',
@@ -34,38 +34,68 @@ export const DEFAULT_UPI_ID = '9505820072@ybl';
 
 const OPTION_BY_VALUE = Object.fromEntries(PAPER_PRICE_OPTIONS.map((o) => [o.value, o]));
 
+const MAX_PRICE_AMOUNT = 100000;
+
 export function priceTypePath() {
   return {
     priceType: {
       type: String,
-      enum: PAPER_PRICE_VALUES,
       default: 'free',
+      trim: true,
     },
   };
 }
 
+function customPriceOption(amount) {
+  return {
+    value: String(amount),
+    amount,
+    label: `Rs. ${amount}/-`,
+    caption: `Rs. ${amount}/-`,
+  };
+}
+
 export function getPriceOption(priceType) {
-  return OPTION_BY_VALUE[priceType] || OPTION_BY_VALUE.free;
+  if (OPTION_BY_VALUE[priceType]) return OPTION_BY_VALUE[priceType];
+  const amount = Number(priceType);
+  if (Number.isFinite(amount) && amount > 0) {
+    return customPriceOption(Math.round(amount));
+  }
+  return OPTION_BY_VALUE.free;
 }
 
 export function amountForPriceType(priceType) {
   return getPriceOption(priceType).amount;
 }
 
+/**
+ * Accepts "free", 0, legacy presets, or any whole-rupee amount (e.g. 50, 100, 150).
+ */
 export function parsePriceType(value, { fallback = 'free' } = {}) {
   if (value === undefined || value === null || value === '') return fallback;
   const raw = String(value).trim();
-  if (!PAPER_PRICE_VALUES.includes(raw)) {
-    throw new ApiError(400, 'Invalid price option. Choose Free, Rs. 30, Rs. 25, or Rs. 20.');
+  const lower = raw.toLowerCase();
+  if (lower === 'free') return 'free';
+
+  if (PAPER_PRICE_VALUES.includes(raw)) {
+    return raw;
   }
-  return raw;
+
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount < 0 || amount > MAX_PRICE_AMOUNT) {
+    throw new ApiError(
+      400,
+      `Invalid price. Enter 0 for free, or a whole number up to ${MAX_PRICE_AMOUNT}.`
+    );
+  }
+  if (amount === 0) return 'free';
+  return String(amount);
 }
 
 export function priceJsonFields(doc) {
-  const priceType = PAPER_PRICE_VALUES.includes(doc.priceType) ? doc.priceType : 'free';
-  const option = getPriceOption(priceType);
+  const option = getPriceOption(doc?.priceType);
   return {
-    priceType,
+    priceType: option.value,
     priceAmount: option.amount,
     priceLabel: option.label,
     priceCaption: option.caption,

@@ -297,3 +297,59 @@ export const enableContentPayment = asyncHandler(async (req, res) => {
     },
   });
 });
+
+export const lockContentPayment = asyncHandler(async (req, res) => {
+  const { contentType, contentId } = req.params;
+  const buyerType = String(req.body?.buyerType || '').trim();
+  const buyerId = String(req.body?.buyerId || '').trim();
+
+  if (!['student', 'educator'].includes(buyerType)) {
+    throw new ApiError(400, 'buyerType must be student or educator');
+  }
+  if (!mongoose.Types.ObjectId.isValid(buyerId)) {
+    throw new ApiError(400, 'Invalid buyer id');
+  }
+
+  const doc = await loadContent(contentType, contentId);
+  const pricing = priceJsonFields(doc);
+  if (!pricing.needsPayment) {
+    throw new ApiError(400, 'This paper is free of cost');
+  }
+
+  const purchase = await ContentPurchase.findOne({
+    buyerType,
+    buyerId,
+    contentType,
+    contentId: doc._id,
+  });
+
+  if (!purchase || purchase.status !== 'confirmed') {
+    throw new ApiError(400, 'This user is not unlocked');
+  }
+
+  // Revert to rejected so download locks again; Enable payment can re-unlock.
+  purchase.status = 'rejected';
+  purchase.confirmedAt = null;
+  purchase.confirmedBy = null;
+  purchase.paymentNote = purchase.paymentNote
+    ? `${purchase.paymentNote} · Locked by admin`
+    : 'Locked by admin';
+  await purchase.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Download locked again for this user.',
+    data: {
+      purchase: {
+        id: purchase._id,
+        buyerType: purchase.buyerType,
+        buyerId: purchase.buyerId,
+        contentType: purchase.contentType,
+        contentId: purchase.contentId,
+        status: purchase.status,
+        utr: purchase.utr || '',
+        confirmedAt: purchase.confirmedAt,
+      },
+    },
+  });
+});
